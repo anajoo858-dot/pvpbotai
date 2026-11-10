@@ -369,6 +369,14 @@ async function equipBestArmor(runtime,useElytra) {
   if(chest)await bot.equip(chest,"torso");
 }
 
+
+function stopAutoArmor(runtime){if(runtime?.autoArmorTimer)clearInterval(runtime.autoArmorTimer);if(runtime)runtime.autoArmorTimer=null;}
+function startAutoArmor(runtime){
+  if(!runtime?.bot||!runtime.autoArmorEnabled||runtime.autoArmorTimer)return;
+  const apply=()=>equipBestArmor(runtime,!!runtime.useElytra).catch(error=>writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Armor: "+String(error?.message||error).slice(0,180),"inventory").catch(()=>{}));
+  apply();runtime.autoArmorTimer=setInterval(apply,5000);
+}
+
 function startAutoTotem(runtime) {
   if (!runtime?.bot || !runtime.autoTotemEnabled || runtime.autoTotemTimer) return;
   runtime.autoTotemBusy = false;
@@ -535,7 +543,8 @@ app.post("/api/armor",requireCsrf,async(req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime?.bot?.entity)return res.status(409).json({error:"Connect and spawn the bot first."});
   if(typeof req.body?.useElytra==="boolean")runtime.useElytra=req.body.useElytra;
-  try{await equipBestArmor(runtime,runtime.useElytra);res.json({success:true,useElytra:runtime.useElytra});}
+  if(typeof req.body?.enabled==="boolean"){runtime.autoArmorEnabled=req.body.enabled;if(runtime.autoArmorEnabled)startAutoArmor(runtime);else stopAutoArmor(runtime);}
+  try{await equipBestArmor(runtime,runtime.useElytra);res.json({success:true,useElytra:runtime.useElytra,enabled:runtime.autoArmorEnabled});}
   catch(error){res.status(409).json({error:"Could not equip armor: "+String(error?.message||error).slice(0,180)});}
 });
 
@@ -570,7 +579,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   try { mineflayer = require("mineflayer"); }
   catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
   const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
-    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,useElytra:false };
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,useElytra:false,autoArmorEnabled:false,autoArmorTimer:null };
   activeBots.set(req.session.workspaceId,runtime);
   try {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
@@ -623,7 +632,8 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
     });
     runtime.bot.on("end",()=>{
-          stopAutoTotem(runtime);
+          stopAutoArmor(runtime);
+      stopAutoTotem(runtime);
       stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
       if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
@@ -641,6 +651,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
+  stopAutoArmor(runtime);
   stopAutoTotem(runtime);
   stopIdleWander(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
