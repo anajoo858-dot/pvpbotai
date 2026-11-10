@@ -101,7 +101,12 @@
         <div class="section-head"><div><p class="eyebrow">RUNTIME OUTPUT</p><h2>Live console</h2><p class="muted">Real-time output from your private bot workspace.</p></div><span class="tag" id="console-connection">STREAM CONNECTING</span></div>
         <div class="console-toolbar"><span><i class="console-dot"></i> LIVE STREAM</span><button class="button secondary" id="clear-console" type="button">Clear view</button></div>
         <div class="terminal" id="console-output" role="log" aria-live="polite"><div class="terminal-line muted">Waiting for workspace events…</div></div>
-        <p class="hint">Read-only console. Authentication commands are sent only in response to detected server prompts.</p>
+        <form class="console-input-row" id="console-chat-form">
+          <span class="console-prompt">BOT &gt;</span>
+          <input id="console-message" type="text" maxlength="256" placeholder="Type a chat message or allowed command…" autocomplete="off" disabled>
+          <button class="button primary" id="console-send" type="submit" disabled>Send</button>
+        </form>
+        <p class="hint">Send normal chat or common player commands such as /help, /spawn, /home, /warp, /msg, or /tpa. Privileged/admin commands are blocked; use the Auth Vault for login and registration.</p>
       </section>
       <section class="panel section" id="logs">
         <div class="section-head"><div><p class="eyebrow">PERSISTENT HISTORY</p><h2>Logs</h2><p class="muted">Saved events for this browser session, newest entries at the bottom.</p></div><span class="tag" id="logs-count">0 EVENTS</span></div>
