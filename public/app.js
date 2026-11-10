@@ -35,6 +35,8 @@ function fillForm(profile) {
   $("bot-name").value = profile.botName;
   $("server-host").value = profile.serverHost;
   $("server-port").value = profile.serverPort;
+  if (!$("vault-server-host").value.trim()) $("vault-server-host").value = profile.serverHost;
+  if (!$("vault-server-port").value.trim() || $("vault-server-port").value === "25565") $("vault-server-port").value = profile.serverPort;
   $("mc-version").value = profile.minecraftVersion;
   $("thinking-level").value = profile.thinkingLevel;
 }
@@ -74,13 +76,24 @@ async function refreshVault() {
       del.addEventListener("click",async()=>{if(!window.confirm("Delete credentials for "+entry.server_host+" under "+botName+"?"))return;try{await api("/api/vault/"+encodeURIComponent(entry.id),{method:"DELETE",body:"{}"});await refreshVault();}catch(e){showFeedback(e.message,true);}});
       actions.append(copy,del);row.append(host,port,masked,actions);list.append(row);
     }
-  } catch(e) { $("vault-count").textContent=e.message; }
+  } catch(e) { $("vault-count").textContent="Could not load"; showFeedback("Vault could not load: "+e.message,true); }
 }
 async function saveVaultEntry() {
+  const button = $("vault-save"), botName = currentBotName();
+  const serverHost = $("vault-server-host").value.trim() || $("server-host").value.trim();
+  const serverPort = Number($("vault-server-port").value || $("server-port").value || 25565);
+  const password = $("vault-password").value;
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return showFeedback("Bot name must be 3–16 letters, numbers, or underscores.", true);
+  if (!serverHost) return showFeedback("Enter a server address in Server settings or the vault form.", true);
+  if (!password) return showFeedback("Enter the server password first.", true);
+  button.disabled = true; button.textContent = "Saving securely…";
   try {
-    await api("/api/vault",{method:"POST",body:JSON.stringify({botName:currentBotName(),serverHost:$("vault-server-host").value.trim(),serverPort:Number($("vault-server-port").value),password:$("vault-password").value})});
-    $("vault-password").value="";showFeedback("Credentials saved to "+currentBotName()+"'s vault.");await refreshVault();
-  } catch(e) { showFeedback(e.message,true); }
+    await api("/api/vault",{method:"POST",body:JSON.stringify({botName,serverHost,serverPort,password})});
+    $("vault-password").value=""; $("vault-server-host").value=serverHost; $("vault-server-port").value=String(serverPort);
+    showFeedback("✓ Password securely saved for "+botName+" on "+serverHost+":"+serverPort+".");
+    await refreshVault();
+  } catch(e) { showFeedback("Save failed: "+e.message,true); }
+  finally { button.disabled=false; button.textContent="Save password"; }
 }
 async function loadProfile() {
   const profile = selectedProfile();
@@ -212,7 +225,7 @@ async function init() {
     if (active) fillForm(active);
     $("profile-select").addEventListener("change", async () => {
       const profile = selectedProfile();
-      if (profile) fillForm(profile);
+      if (profile) { fillForm(profile); $("vault-server-host").value=profile.serverHost; $("vault-server-port").value=String(profile.serverPort); }
       await refreshVault();
     });
     $("bot-name").addEventListener("change", refreshVault);
@@ -224,7 +237,12 @@ async function init() {
     $("save-profile").addEventListener("click", saveProfile);
     $("delete-profile").addEventListener("click", deleteProfile);
     $("export-profiles").addEventListener("click", exportProfiles);
+    $("vault-server-host").value = active?.serverHost || "";
+    $("vault-server-port").value = String(active?.serverPort || 25565);
     connectLogStream();
+    await refreshVault();
+    await refreshBotState();
+    setInterval(refreshBotState, 5000);
     await refreshLogs();
   } catch (error) { showFeedback(error.message, true); }
 }
