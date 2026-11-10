@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#activity">Activity</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -49,6 +49,17 @@
       <section class="panel section" id="activity">
         <div class="section-head"><div><p class="eyebrow">LIVE FEED</p><h2>Activity</h2></div></div>
         <div class="empty"><span>◌</span><div><strong>Waiting for activity</strong><p class="muted">Events appear here when an authorized runtime is added.</p></div></div>
+      </section>
+      <section class="panel section" id="console">
+        <div class="section-head"><div><p class="eyebrow">RUNTIME OUTPUT</p><h2>Live console</h2><p class="muted">Real-time output from your private bot workspace.</p></div><span class="tag" id="console-connection">STREAM CONNECTING</span></div>
+        <div class="console-toolbar"><span><i class="console-dot"></i> LIVE STREAM</span><button class="button secondary" id="clear-console" type="button">Clear view</button></div>
+        <div class="terminal" id="console-output" role="log" aria-live="polite"><div class="terminal-line muted">Waiting for workspace events…</div></div>
+        <p class="hint">Read-only console. Bot commands are not enabled in this prototype.</p>
+      </section>
+      <section class="panel section" id="logs">
+        <div class="section-head"><div><p class="eyebrow">PERSISTENT HISTORY</p><h2>Logs</h2><p class="muted">Saved events for this browser session, newest entries at the bottom.</p></div><span class="tag" id="logs-count">0 EVENTS</span></div>
+        <div class="logs-toolbar"><input id="logs-search" type="search" placeholder="Search messages or source…" aria-label="Search logs"><select id="logs-level" aria-label="Filter log level"><option value="">All levels</option><option>INFO</option><option>WARN</option><option>ERROR</option><option>DEBUG</option></select><button class="button secondary" id="refresh-logs" type="button">Refresh</button></div>
+        <div class="logs-list" id="logs-list"><div class="empty"><span>◌</span><div><strong>No log entries yet</strong><p class="muted">New runtime and system events will appear here.</p></div></div></div>
       </section>
       <footer>Use automation only where you have permission and the server rules allow it. This prototype does not connect to Minecraft.</footer>
     </main>
