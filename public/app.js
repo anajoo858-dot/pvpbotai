@@ -243,19 +243,26 @@ function enhanceGlassSelects() {
       });
       trigger.disabled = select.disabled;
     }
-    Array.from(select.options).forEach(option => {
-      const item = document.createElement("button");
-      item.type = "button"; item.className = "glass-option";
-      item.textContent = option.textContent; item.dataset.value = option.value;
-      item.setAttribute("role","option");
-      item.addEventListener("click",() => {
-        select.value = option.value;
-        select.dispatchEvent(new Event("change",{bubbles:true}));
-        sync(); wrap.classList.remove("open"); trigger.setAttribute("aria-expanded","false");
-        trigger.focus();
+    function populateOptions() {
+      menu.replaceChildren();
+      Array.from(select.options).forEach(option => {
+        const item = document.createElement("button");
+        item.type = "button"; item.className = "glass-option";
+        item.textContent = option.textContent; item.dataset.value = option.value;
+        item.setAttribute("role","option");
+        item.addEventListener("click",() => {
+          select.value = option.value;
+          select.dispatchEvent(new Event("change",{bubbles:true}));
+          sync(); wrap.classList.remove("open"); trigger.setAttribute("aria-expanded","false");
+          trigger.focus();
+        });
+        menu.append(item);
       });
-      menu.append(item);
-    });
+      sync();
+    }
+    const optionObserver = new MutationObserver(populateOptions);
+    optionObserver.observe(select,{childList:true,subtree:true});
+    populateOptions();
     trigger.addEventListener("click",() => {
       const open = !wrap.classList.contains("open");
       document.querySelectorAll(".glass-select.open").forEach(node => {
