@@ -304,9 +304,25 @@ app.get("/api/logs/stream", async (req, res) => {
   req.on("close", () => { const clients = logStreams.get(workspaceId); clients?.delete(res); if (clients?.size === 0) logStreams.delete(workspaceId); });
 });
 function botPublicState(runtime) {
-  if (!runtime) return { botStatus: "disconnected", connected: false };
+  if (!runtime) return { botStatus: "disconnected", connected: false, lastError: null };
   return { botStatus: runtime.status, connected: ["connecting","connected","authenticating","authenticated"].includes(runtime.status),
-    botName: runtime.botName, serverHost: runtime.serverHost, serverPort: runtime.serverPort, authStatus: runtime.authStatus || "unknown" };
+    botName: runtime.botName, serverHost: runtime.serverHost, serverPort: runtime.serverPort,
+    authStatus: runtime.authStatus || "unknown", lastError: runtime.lastError || null };
+}
+function readableKickReason(reason) {
+  try {
+    const parsed = typeof reason === "string" ? JSON.parse(reason) : reason;
+    const flatten = (node) => {
+      if (node == null) return "";
+      if (typeof node === "string" || typeof node === "number") return String(node);
+      if (Array.isArray(node)) return node.map(flatten).join("");
+      return (node.text || "") + (Array.isArray(node.extra) ? node.extra.map(flatten).join("") : "");
+    };
+    const text = flatten(parsed).replace(/§[0-9A-FK-OR]/gi, "").replace(/[\r\n]+/g, " ").trim();
+    return (text || String(reason || "No reason supplied")).slice(0, 500);
+  } catch {
+    return String(reason || "No reason supplied").replace(/[\r\n]+/g, " ").slice(0, 500);
+  }
 }
 function authPromptType(message) {
   const value = String(message || "").toLowerCase();
@@ -353,11 +369,23 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
     password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null };
   activeBots.set(req.session.workspaceId,runtime);
   try {
-    const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline",hideErrors:true };
+    const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
     if (profile.minecraftVersion && profile.minecraftVersion !== "auto") options.version = profile.minecraftVersion;
     runtime.bot = mineflayer.createBot(options);
-    runtime.bot.on("login",()=>{runtime.status="connected";writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft connection established for "+runtime.botName+".","bot").catch(()=>{});});
-    runtime.bot.on("spawn",()=>writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world.","bot").catch(()=>{}));
+    runtime.connectTimer = setTimeout(() => {
+      if (runtime.status === "connecting") {
+        runtime.status = "failed";
+        runtime.lastError = "Connection timed out before the server accepted the bot. Check the address, port, server availability, and network access.";
+        writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
+        try { runtime.bot?.quit("Connection timeout"); } catch {}
+      }
+    }, 45000);
+    runtime.bot.on("login",()=>{
+      if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
+      runtime.status="connected";runtime.lastError=null;
+      writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
+    });
+    runtime.bot.on("spawn",()=>{runtime.status="connected";writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world.","bot").catch(()=>{});});
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
@@ -378,9 +406,24 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
         writeWorkspaceLog(runtime.workspaceId,"WARN","Server did not accept the saved authentication attempt. Check the vault entry and server instructions.","auth").catch(()=>{});
       }
     });
-    runtime.bot.on("kicked",()=>writeWorkspaceLog(runtime.workspaceId,"WARN","Server kicked the bot. Check server access and authentication requirements.","bot").catch(()=>{}));
-    runtime.bot.on("error",()=>writeWorkspaceLog(runtime.workspaceId,"ERROR","Minecraft connection error. Check the server address, version, and access settings.","bot").catch(()=>{}));
-    runtime.bot.on("end",()=>{runtime.status="disconnected";runtime.authStatus="unknown";writeWorkspaceLog(runtime.workspaceId,"WARN","Minecraft connection ended.","bot").catch(()=>{});});
+    runtime.bot.on("kicked",(reason)=>{
+      if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
+      runtime.lastError = "Server kicked the bot: " + readableKickReason(reason);
+      runtime.status = "failed";
+      writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
+    });
+    runtime.bot.on("error",(error)=>{
+      const detail = String(error?.message || error || "Unknown connection error").replace(/[\r\n]+/g," ").slice(0,450);
+      runtime.lastError = "Minecraft connection error: " + detail;
+      if (runtime.status === "connecting") runtime.status = "failed";
+      writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
+    });
+    runtime.bot.on("end",()=>{
+      if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
+      if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
+      runtime.authStatus="unknown";
+      writeWorkspaceLog(runtime.workspaceId,"WARN",runtime.lastError || "Minecraft connection ended. Check the preceding connection log for details.","bot").catch(()=>{});
+    });
     await writeWorkspaceLog(runtime.workspaceId,"INFO","Connecting "+profile.botName+" to "+profile.serverHost+":"+profile.serverPort+".","bot");
     res.status(202).json({ ...botPublicState(runtime), message: password ? "Connecting. Saved credentials will be used if the server requests authentication." : "Connecting. Add this server's password to the vault if the server requests authentication." });
   } catch {
