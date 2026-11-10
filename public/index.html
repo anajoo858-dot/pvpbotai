@@ -47,13 +47,18 @@
         <p class="hint">Save as new creates a separate profile. No connection or game action is triggered.</p>
       </section>
       <section class="panel section" id="vault">
-        <div class="section-head"><div><p class="eyebrow">PRIVATE CREDENTIAL STORAGE</p><h2>Authentication vault</h2><p class="muted">Save a separate server password for the selected bot profile. Passwords are encrypted on the server and never included in exports or logs.</p></div><span class="tag" id="vault-status">Checking…</span></div>
-        <div class="vault-grid">
-          <label>Server authentication password<input id="vault-password" type="password" maxlength="128" autocomplete="new-password" placeholder="Enter password to save or replace"></label>
-          <label>Registration format<select id="vault-format"><option value="auto">Auto-detect when supported</option><option value="single">/register password</option><option value="double">/register password password</option></select></label>
+        <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
+        <p class="hint">Showing vault for bot: <strong id="vault-bot-label">—</strong></p>
+        <div class="vault-entry-form">
+          <label>Server IP<input id="vault-server-host" maxlength="253" placeholder="play.example.net"></label>
+          <label>Port<input id="vault-server-port" type="number" min="1" max="65535" value="25565"></label>
+          <label>Password entered<input id="vault-password" type="password" maxlength="128" autocomplete="new-password" placeholder="Server password"></label>
+          <button class="button primary" id="vault-save" type="button">Save server</button>
         </div>
-        <div class="actions"><button class="button primary" id="vault-save" type="button">Save password</button><button class="button danger" id="vault-delete" type="button">Remove password</button></div>
-        <p class="hint">Login uses /login password. Registration format is a per-profile preference. Automatic detection and command sending will work once the Minecraft runtime is connected.</p>
+        <div class="vault-table-head"><span>Server IP</span><span>Port</span><span>Password entered</span><span>Actions</span></div>
+        <div class="vault-list" id="vault-list"><p class="muted">Choose a bot name to view its saved servers.</p></div>
+        <div class="actions"><button class="button secondary" id="vault-refresh" type="button">Refresh vault</button></div>
+        <p class="hint">Passwords are encrypted in PostgreSQL. Copy reveals a password only after you click it. Automatic saving after successful authentication will be connected when the Minecraft runtime is added.</p>
       </section>
       <section class="panel section" id="activity">
         <div class="section-head"><div><p class="eyebrow">LIVE FEED</p><h2>Activity</h2></div></div>
