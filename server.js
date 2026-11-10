@@ -85,6 +85,7 @@ async function initializeDatabase() {
   `);
   await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS combat_mode VARCHAR(20) NOT NULL DEFAULT 'smp'");
   await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS fighting_style VARCHAR(20) NOT NULL DEFAULT 'balanced'");
+  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) NOT NULL DEFAULT 'hybrid'");
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
   await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'system', message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
@@ -142,18 +143,19 @@ function validateProfile(input) {
   const thinkingLevel = ["low", "medium", "high"].includes(input?.thinkingLevel) ? input.thinkingLevel : "medium";
   const combatMode = ["smp", "cpvp", "sword", "axe", "uhc", "pot"].includes(input?.combatMode) ? input.combatMode : "smp";
   const fightingStyle = ["balanced", "aggressive", "defensive", "tactical", "adaptive"].includes(input?.fightingStyle) ? input.fightingStyle : "balanced";
+  const aiMode = ["hybrid", "ai", "rules"].includes(input?.aiMode) ? input.aiMode : "hybrid";
   if (!name) return { error: "Enter a profile name." };
   if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return { error: "Bot name must be 3–16 letters, numbers, or underscores." };
   if (!serverHost || !/^[a-zA-Z0-9.-]+$/.test(serverHost) || serverHost.startsWith(".") || serverHost.endsWith(".")) return { error: "Enter a valid hostname without a URL or protocol." };
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) return { error: "Port must be between 1 and 65535." };
-  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel, combatMode, fightingStyle } };
+  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel, combatMode, fightingStyle, aiMode } };
 }
 function publicProfile(row) {
   return {
     id: row.id, name: row.name, botName: row.bot_name, serverHost: row.server_host,
     serverPort: row.server_port, minecraftVersion: row.minecraft_version,
     aiProvider: row.ai_provider, thinkingLevel: row.thinking_level,
-    combatMode: row.combat_mode || "smp", fightingStyle: row.fighting_style || "balanced",
+    combatMode: row.combat_mode || "smp", fightingStyle: row.fighting_style || "balanced", aiMode: row.ai_mode || "hybrid",
     updatedAt: row.updated_at
   };
 }
@@ -192,9 +194,9 @@ app.post("/api/profiles", requireCsrf, async (req, res) => {
   const p = parsed.value;
   const id = crypto.randomUUID();
   const result = await pool.query(
-    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level,combat_mode,fighting_style)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle]
+    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level,combat_mode,fighting_style,ai_mode)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,p.aiMode]
   );
   res.status(201).json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(workspaceId) });
 });
@@ -203,9 +205,9 @@ app.put("/api/profiles/:id", requireCsrf, async (req, res) => {
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   const p = parsed.value;
   const result = await pool.query(
-    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,combat_mode=$8,fighting_style=$9,updated_at=NOW()
-     WHERE workspace_id=$10 AND id=$11 RETURNING *`,
-    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,req.session.workspaceId,req.params.id]
+    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,combat_mode=$8,fighting_style=$9,ai_mode=$10,updated_at=NOW()
+     WHERE workspace_id=$11 AND id=$12 RETURNING *`,
+    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,p.aiMode,req.session.workspaceId,req.params.id]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Profile not found in this session." });
   res.json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(req.session.workspaceId) });
@@ -354,6 +356,24 @@ async function sendVaultAuth(runtime, mode) {
     return false;
   }
 }
+app.get("/api/players", (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  const connected=!!runtime?.bot&&["connected","authenticated"].includes(runtime.status);
+  const players=connected?Object.values(runtime.bot.players||{}).filter(p=>p?.username&&p.username!==runtime.botName).map(p=>({username:String(p.username).slice(0,16),ping:Number.isFinite(p.ping)?p.ping:null})).sort((x,y)=>x.username.localeCompare(y.username)):[];
+  res.set("Cache-Control","no-store");res.json({connected,players,targetPlayer:runtime?.targetPlayer||null});
+});
+app.post("/api/target",requireCsrf,(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect the bot before selecting an opponent."});
+  const player=cleanText(req.body?.player,16);
+  if(!player){runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
+  if(req.body?.approved!==true)return res.status(400).json({error:"Confirm that the player opted in and the arena/server allows PvP."});
+  const found=Object.values(runtime.bot.players||{}).some(p=>p?.username?.toLowerCase()===player.toLowerCase());
+  if(!found)return res.status(404).json({error:"That player is not currently in the server roster."});
+  runtime.targetPlayer=player;
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Target selection does not initiate combat.","combat").catch(()=>{});
+  res.json({targetPlayer:player,selected:true});
+});
 app.get("/api/state", (req, res) => res.json(botPublicState(activeBots.get(req.session.workspaceId))));
 app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   const profile = await getProfile(req.session.workspaceId, req.body?.profileId);
