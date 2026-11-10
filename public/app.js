@@ -195,6 +195,7 @@ async function refreshBotState() {
     $("runtime-status").textContent = state.connected ? "Connected to " + state.serverHost + ":" + state.serverPort : "Bot is " + state.botStatus + ".";
     $("connect-bot").disabled = state.connected;
     $("disconnect-bot").disabled = !state.connected;
+    updateConnectionDiagnostic(state);
   } catch {}
 }
 async function connectBot() {
@@ -204,6 +205,7 @@ async function connectBot() {
     const result = await api("/api/bot/connect", { method:"POST", body:JSON.stringify({profileId:profile.id}) });
     showFeedback(result.message);
     await refreshBotState();
+    await refreshLogs();
   } catch(error) { showFeedback(error.message,true); }
 }
 async function disconnectBot() {
@@ -213,10 +215,94 @@ async function disconnectBot() {
     await refreshBotState();
   } catch(error) { showFeedback(error.message,true); }
 }
+
+function enhanceGlassSelects() {
+  document.querySelectorAll("select").forEach((select, index) => {
+    if (select.dataset.glassReady) return;
+    select.dataset.glassReady = "1";
+    select.classList.add("glass-native");
+    const wrap = document.createElement("div");
+    wrap.className = "glass-select";
+    const trigger = document.createElement("button");
+    trigger.type = "button"; trigger.className = "glass-select-trigger";
+    trigger.setAttribute("aria-haspopup","listbox");
+    trigger.setAttribute("aria-expanded","false");
+    trigger.setAttribute("aria-label",select.getAttribute("aria-label") || select.closest("label")?.childNodes[0]?.textContent?.trim() || "Choose an option");
+    const label = document.createElement("span");
+    trigger.append(label);
+    const menu = document.createElement("div");
+    menu.className = "glass-select-menu"; menu.setAttribute("role","listbox");
+    menu.id = "glass-select-menu-" + index;
+    trigger.setAttribute("aria-controls",menu.id);
+    function sync() {
+      const option = select.options[select.selectedIndex];
+      label.textContent = option ? option.textContent : "Choose…";
+      menu.querySelectorAll(".glass-option").forEach(button => {
+        const active = button.dataset.value === select.value;
+        button.setAttribute("aria-selected",String(active));
+      });
+      trigger.disabled = select.disabled;
+    }
+    Array.from(select.options).forEach(option => {
+      const item = document.createElement("button");
+      item.type = "button"; item.className = "glass-option";
+      item.textContent = option.textContent; item.dataset.value = option.value;
+      item.setAttribute("role","option");
+      item.addEventListener("click",() => {
+        select.value = option.value;
+        select.dispatchEvent(new Event("change",{bubbles:true}));
+        sync(); wrap.classList.remove("open"); trigger.setAttribute("aria-expanded","false");
+        trigger.focus();
+      });
+      menu.append(item);
+    });
+    trigger.addEventListener("click",() => {
+      const open = !wrap.classList.contains("open");
+      document.querySelectorAll(".glass-select.open").forEach(node => {
+        node.classList.remove("open"); node.querySelector(".glass-select-trigger")?.setAttribute("aria-expanded","false");
+      });
+      if (open) { wrap.classList.add("open"); trigger.setAttribute("aria-expanded","true"); }
+    });
+    trigger.addEventListener("keydown",event => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault(); wrap.classList.add("open"); trigger.setAttribute("aria-expanded","true");
+        const options = [...menu.querySelectorAll(".glass-option")];
+        (options[select.selectedIndex] || options[0])?.focus();
+      }
+    });
+    menu.addEventListener("keydown",event => {
+      const options = [...menu.querySelectorAll(".glass-option")];
+      const current = options.indexOf(document.activeElement);
+      if (event.key === "Escape") { wrap.classList.remove("open");trigger.setAttribute("aria-expanded","false");trigger.focus(); }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); options[(current + (event.key === "ArrowDown" ? 1 : -1) + options.length) % options.length]?.focus(); }
+    });
+    select.addEventListener("change",sync);
+    select.insertAdjacentElement("afterend",wrap);
+    wrap.append(trigger,menu); sync();
+  });
+  document.addEventListener("click",event => {
+    if (!event.target.closest(".glass-select")) document.querySelectorAll(".glass-select.open").forEach(node => {
+      node.classList.remove("open"); node.querySelector(".glass-select-trigger")?.setAttribute("aria-expanded","false");
+    });
+  });
+}
+function updateConnectionDiagnostic(state) {
+  const panel = $("connection-diagnostic");
+  if (!panel) return;
+  const status = state.botStatus || "disconnected";
+  panel.dataset.state = status === "failed" ? "failed" : (state.connected ? (status === "connecting" ? "connecting" : "connected") : "idle");
+  const title = $("diagnostic-title"), message = $("diagnostic-message");
+  if (status === "connecting") { title.textContent = "Connecting to Minecraft…"; message.textContent = "Waiting for the server handshake. This can take up to 45 seconds."; }
+  else if (status === "connected" || status === "authenticated") { title.textContent = status === "authenticated" ? "Server authentication complete" : "Connected to server"; message.textContent = "The bot has joined the Minecraft world."; }
+  else if (status === "failed") { title.textContent = "Connection failed"; message.textContent = state.lastError || "The server ended the connection. Check the live console for details."; }
+  else { title.textContent = "Ready to connect"; message.textContent = "Connection diagnostics will appear here after you connect."; }
+}
+
 async function init() {
   try {
     const data = await api("/api/bootstrap");
     csrfToken = data.csrfToken;
+    enhanceGlassSelects();
     profiles = data.profiles;
     selectedProfileId = data.selectedProfileId;
     $("bot-status").textContent = data.botStatus === "disconnected" ? "Disconnected" : data.botStatus;
