@@ -250,7 +250,7 @@ app.post("/api/vault", requireCsrf, async (req, res) => {
   const identity = validateVaultIdentity(req.body);
   if (identity.error) return res.status(400).json({ error: identity.error });
   const password = typeof req.body?.password === "string" ? req.body.password : "";
-  if (!password || password.length > 128 || /[\\r\\n]/.test(password)) return res.status(400).json({ error: "Password must be 1–128 characters and cannot contain line breaks." });
+  if (!password || password.length > 128 || /[\r\n]/.test(password)) return res.status(400).json({ error: "Password must be 1–128 characters and cannot contain line breaks." });
   let encrypted;
   try { encrypted = encryptSecret(password); } catch { return res.status(503).json({ error: "Secure vault is not configured on the server." }); }
   const { botName, serverHost, serverPort } = identity.value;
