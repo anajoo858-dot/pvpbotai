@@ -641,7 +641,6 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
-  stopCombat(runtime);
   stopAutoTotem(runtime);
   stopIdleWander(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
