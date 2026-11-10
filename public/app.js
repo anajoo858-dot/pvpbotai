@@ -26,7 +26,7 @@ async function runInventoryAction(action){
   catch(error){showFeedback(error.message,true);}
 }
 async function equipArmor(){
-  try{await api("/api/armor",{method:"POST",body:JSON.stringify({useElytra:$("armor-elytra").checked})});$("armor-status").textContent="Best available armor equipped.";await refreshMonitor();await refreshInventory();}
+  try{await api("/api/armor",{method:"POST",body:JSON.stringify({useElytra:$("armor-elytra").checked,enabled:$("armor-enabled").checked})});$("armor-status").textContent="Best available armor equipped.";await refreshMonitor();await refreshInventory();}
   catch(error){$("armor-status").textContent=error.message;}
 }
 
@@ -497,6 +497,8 @@ async function init() {
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
     $("armor-equip").addEventListener("click",equipArmor);
+    $("armor-enabled").addEventListener("change",equipArmor);
+    $("armor-elytra").addEventListener("change",()=>{if($("armor-enabled").checked)equipArmor();});
     $("clear-target").addEventListener("click", () => setOpponent(true));
     $("load-profile").addEventListener("click", loadProfile);
     $("save-profile").addEventListener("click", saveProfile);
