@@ -284,6 +284,25 @@ async function setOpponent(clear=false) {
     $("target-approved").checked=false;
   } catch(e){$("target-status").textContent=e.message;}
 }
+async function refreshMonitor() {
+  try {
+    const data=await api("/api/monitor");
+    const status=$("monitor-status");
+    if(!data.connected || !data.worldReady) {
+      status.textContent="WAITING FOR BOT";
+      $("monitor-health").textContent="—"; $("monitor-food").textContent="—"; $("monitor-totems").textContent="—"; $("monitor-totem-detail").textContent="Offhand: —"; $("monitor-coords").textContent="—"; $("monitor-dimension").textContent="Dimension: —"; $("health-meter").style.width="0%"; $("food-meter").style.width="0%"; $("monitor-equipment").textContent="Connect the bot and wait for it to spawn."; $("monitor-updated").textContent="No live world data."; return;
+    }
+    status.textContent="LIVE";
+    const health=Number.isFinite(data.health)?data.health:null, food=Number.isFinite(data.food)?data.food:null;
+    $("monitor-health").textContent=health===null?"—":health+"/20"; $("monitor-food").textContent=food===null?"—":food+"/20";
+    $("health-meter").style.width=(health===null?0:Math.max(0,Math.min(20,health))*5)+"%"; $("food-meter").style.width=(food===null?0:Math.max(0,Math.min(20,food))*5)+"%";
+    $("monitor-totems").textContent=String(data.totem?.total ?? 0); $("monitor-totem-detail").textContent=(data.totem?.equipped?"Equipped in offhand":"No totem in offhand")+" · "+(data.totem?.spares ?? 0)+" spare";
+    const p=data.position; $("monitor-coords").textContent=p?("X "+p.x+"   Y "+p.y+"   Z "+p.z):"Position unavailable"; $("monitor-dimension").textContent="Dimension: "+(data.dimension||"Unknown");
+    const equipment=$("monitor-equipment"); equipment.replaceChildren();
+    for(const item of (data.equipment||[])) { const card=document.createElement("div"); card.className="equipment-item"; const label=document.createElement("span"); label.textContent=item.slot; const value=document.createElement("strong"); value.textContent=item.item; card.append(label,value); equipment.append(card); }
+    $("monitor-updated").textContent="Updated "+new Date().toLocaleTimeString();
+  } catch(error) { $("monitor-status").textContent="UNAVAILABLE"; $("monitor-updated").textContent="Monitor error: "+error.message; }
+}
 async function refreshBotState() {
   try {
     const state = await api("/api/state");
@@ -454,6 +473,8 @@ async function init() {
     await refreshBotState();
     await refreshFeatures();
     setInterval(refreshBotState, 5000);
+    await refreshMonitor();
+    setInterval(refreshMonitor, 2000);
     setInterval(refreshFeatures, 5000);
     setInterval(refreshPlayers, 5000);
     await refreshLogs();
