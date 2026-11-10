@@ -8,6 +8,14 @@ const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 
 const app = express();
+const logStreams = new Map();
+
+async function writeWorkspaceLog(workspaceId, level, message, source = "system") {
+  const result = await pool.query("INSERT INTO bot_logs (id, workspace_id, level, source, message) VALUES ($1,$2,$3,$4,$5) RETURNING id, level, source, message, created_at", [crypto.randomUUID(), workspaceId, level, source, String(message).slice(0, 2000)]);
+  const entry = result.rows[0];
+  for (const client of logStreams.get(workspaceId) || []) client.write("event: log\ndata: " + JSON.stringify(entry) + "\n\n");
+  return entry;
+}
 const isProduction = process.env.NODE_ENV === "production";
 const port = Number(process.env.PORT || 3000);
 const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 365;
@@ -61,6 +69,8 @@ async function initializeDatabase() {
     )
   `);
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
+  await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT \"system\", message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+  await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
 }
 
 async function ensureWorkspace(req) {
@@ -178,6 +188,22 @@ app.post("/api/profiles/:id/load", requireCsrf, async (req, res) => {
 app.get("/api/profiles/export", async (req, res) => {
   const profiles = await listProfiles(req.session.workspaceId);
   res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
+});
+app.get("/api/logs", async (req, res) => {
+  const level = ["INFO", "WARN", "ERROR", "DEBUG"].includes(req.query.level) ? req.query.level : null;
+  const search = cleanText(req.query.q, 120) || null;
+  const result = await pool.query("SELECT id, level, source, message, created_at FROM bot_logs WHERE workspace_id = $1 AND ($2::text IS NULL OR level = $2) AND ($3::text IS NULL OR message ILIKE $3 OR source ILIKE $3) ORDER BY created_at DESC LIMIT 200", [req.session.workspaceId, level, search ? "%" + search + "%" : null]);
+  res.json({ logs: result.rows.reverse() });
+});
+app.get("/api/logs/stream", async (req, res) => {
+  const workspaceId = req.session.workspaceId;
+  res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  res.flushHeaders?.();
+  const recent = await pool.query("SELECT id, level, source, message, created_at FROM bot_logs WHERE workspace_id=$1 ORDER BY created_at DESC LIMIT 30", [workspaceId]);
+  for (const entry of recent.rows.reverse()) res.write("event: log\ndata: " + JSON.stringify(entry) + "\n\n");
+  if (!logStreams.has(workspaceId)) logStreams.set(workspaceId, new Set());
+  logStreams.get(workspaceId).add(res);
+  req.on("close", () => { const clients = logStreams.get(workspaceId); clients?.delete(res); if (clients?.size === 0) logStreams.delete(workspaceId); });
 });
 app.get("/api/state", (req, res) => res.json({ botStatus: "disconnected", connected: false, note: "Minecraft runtime is not connected in this prototype." }));
 app.use(express.static(path.join(__dirname, "public")));
