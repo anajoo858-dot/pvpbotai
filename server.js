@@ -22,6 +22,7 @@ const SESSION_MAX_AGE = 1000 * 60 * 60 * 24 * 365;
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required. Configure a persistent PostgreSQL database.");
 if (isProduction && !process.env.SESSION_SECRET) throw new Error("SESSION_SECRET is required in production.");
+if (isProduction && !process.env.VAULT_ENCRYPTION_KEY) throw new Error("VAULT_ENCRYPTION_KEY is required in production.");
 if (isProduction) app.set("trust proxy", 1);
 
 const pool = new Pool({
@@ -45,6 +46,19 @@ app.use(session({
   saveUninitialized: false,
   cookie: { httpOnly: true, secure: isProduction, sameSite: "lax", maxAge: SESSION_MAX_AGE }
 }));
+
+function vaultKey() {
+  const raw = process.env.VAULT_ENCRYPTION_KEY || "";
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) throw new Error("VAULT_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+  return key;
+}
+function encryptSecret(plaintext) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", vaultKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return { ciphertext, iv, tag: cipher.getAuthTag() };
+}
 
 async function initializeDatabase() {
   await pool.query(`
@@ -71,6 +85,18 @@ async function initializeDatabase() {
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
   await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'system', message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS auth_vault (
+      profile_id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+      workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      encrypted_password BYTEA NOT NULL,
+      iv BYTEA NOT NULL,
+      auth_tag BYTEA NOT NULL,
+      register_format VARCHAR(10) NOT NULL DEFAULT 'auto',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS auth_vault_workspace_idx ON auth_vault(workspace_id)");
 }
 
 async function ensureWorkspace(req) {
@@ -189,6 +215,40 @@ app.get("/api/profiles/export", async (req, res) => {
   const profiles = await listProfiles(req.session.workspaceId);
   res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
 });
+// The vault API deliberately returns metadata only. Passwords are encrypted at rest
+// with AES-256-GCM and are never sent back to the browser after saving.
+app.get("/api/vault/:profileId", async (req, res) => {
+  const result = await pool.query(
+    "SELECT register_format, updated_at FROM auth_vault WHERE workspace_id=$1 AND profile_id=$2",
+    [req.session.workspaceId, req.params.profileId]
+  );
+  if (!result.rows[0]) return res.json({ configured: false, registerFormat: "auto" });
+  res.json({ configured: true, registerFormat: result.rows[0].register_format, updatedAt: result.rows[0].updated_at });
+});
+app.put("/api/vault/:profileId", requireCsrf, async (req, res) => {
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  const registerFormat = ["auto", "single", "double"].includes(req.body?.registerFormat) ? req.body.registerFormat : "auto";
+  if (password.length < 1 || password.length > 128 || /[\\r\\n]/.test(password)) {
+    return res.status(400).json({ error: "Password must be 1–128 characters and cannot contain line breaks." });
+  }
+  const profile = await pool.query("SELECT id FROM profiles WHERE workspace_id=$1 AND id=$2", [req.session.workspaceId, req.params.profileId]);
+  if (!profile.rowCount) return res.status(404).json({ error: "Profile not found in this session." });
+  let encrypted;
+  try { encrypted = encryptSecret(password); }
+  catch (error) { console.error("Vault encryption is not configured."); return res.status(503).json({ error: "Secure vault is not configured on the server yet." }); }
+  await pool.query(
+    `INSERT INTO auth_vault (profile_id,workspace_id,encrypted_password,iv,auth_tag,register_format,updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW())
+     ON CONFLICT (profile_id) DO UPDATE SET encrypted_password=EXCLUDED.encrypted_password,iv=EXCLUDED.iv,auth_tag=EXCLUDED.auth_tag,register_format=EXCLUDED.register_format,updated_at=NOW()`,
+    [req.params.profileId, req.session.workspaceId, encrypted.ciphertext, encrypted.iv, encrypted.tag, registerFormat]
+  );
+  res.json({ saved: true, configured: true, registerFormat });
+});
+app.delete("/api/vault/:profileId", requireCsrf, async (req, res) => {
+  await pool.query("DELETE FROM auth_vault WHERE workspace_id=$1 AND profile_id=$2", [req.session.workspaceId, req.params.profileId]);
+  res.json({ deleted: true, configured: false });
+});
+
 app.get("/api/logs", async (req, res) => {
   const level = ["INFO", "WARN", "ERROR", "DEBUG"].includes(req.query.level) ? req.query.level : null;
   const search = cleanText(req.query.q, 120) || null;
