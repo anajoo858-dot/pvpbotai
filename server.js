@@ -356,6 +356,42 @@ async function sendVaultAuth(runtime, mode) {
     return false;
   }
 }
+function startAutoTotem(runtime) {
+  if (!runtime?.bot || runtime.autoTotemTimer) return;
+  runtime.autoTotemBusy = false;
+  runtime.autoTotemMissingLogged = false;
+  runtime.autoTotemTimer = setInterval(async () => {
+    const bot = runtime.bot;
+    if (!bot || !["connected","authenticated"].includes(runtime.status) || runtime.autoTotemBusy) return;
+    const offhand = bot.inventory?.slots?.[45];
+    if (offhand?.name === "totem_of_undying") {
+      runtime.autoTotemMissingLogged = false;
+      return;
+    }
+    const spare = bot.inventory?.items?.().find(item => item.name === "totem_of_undying");
+    if (!spare) {
+      if (!runtime.autoTotemMissingLogged) {
+        runtime.autoTotemMissingLogged = true;
+        writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Totem: offhand is empty and no spare totem was found in inventory.","inventory").catch(()=>{});
+      }
+      return;
+    }
+    runtime.autoTotemBusy = true;
+    try {
+      await bot.equip(spare,"off-hand");
+      runtime.autoTotemMissingLogged = false;
+      writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Totem: equipped a spare totem in the offhand.","inventory").catch(()=>{});
+    } catch (error) {
+      writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Totem could not equip a spare totem: "+String(error?.message||error).slice(0,300),"inventory").catch(()=>{});
+    } finally {
+      runtime.autoTotemBusy = false;
+    }
+  },750);
+}
+function stopAutoTotem(runtime) {
+  if (runtime?.autoTotemTimer) clearInterval(runtime.autoTotemTimer);
+  if (runtime) runtime.autoTotemTimer = null;
+}
 app.get("/api/players", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   const connected=!!runtime?.bot&&["connected","authenticated"].includes(runtime.status);
@@ -410,7 +446,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       runtime.status="connected";runtime.lastError=null;
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
-    runtime.bot.on("spawn",()=>{runtime.status="connected";writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world.","bot").catch(()=>{});});
+    runtime.bot.on("spawn",()=>{runtime.status="connected";startAutoTotem(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem inventory monitor is active.","bot").catch(()=>{});});
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
@@ -444,6 +480,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
     });
     runtime.bot.on("end",()=>{
+      stopAutoTotem(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
       if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
       runtime.authStatus="unknown";
@@ -460,6 +497,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
+  stopAutoTotem(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
   runtime.status="disconnected";runtime.authStatus="unknown";activeBots.delete(req.session.workspaceId);
   await writeWorkspaceLog(req.session.workspaceId,"INFO","Bot disconnected from the dashboard.","bot");
