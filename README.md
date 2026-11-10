@@ -1,33 +1,38 @@
 # PvPBotAI
 
-A session-isolated Minecraft dashboard prototype with a profile manager.
+A session-isolated Minecraft dashboard prototype with PostgreSQL persistence.
 
 ## Included
-- Separate temporary workspace for each browser session.
-- Sample **Main SMP** profile.
-- Create, load, and delete profiles; export profiles as JSON.
+- PostgreSQL-backed profiles and workspace ownership.
+- PostgreSQL-backed Express sessions, surviving server restarts and deployments.
+- A separate workspace per browser session, enforced in every profile query.
+- Create, load, edit, delete, and export profiles.
 - Profile validation and a 20-profile per-session limit.
-- CSRF token checks, rate limiting, Helmet security headers, and HTTP-only session cookies.
-- Profile exports use an explicit field allowlist, so API keys and secrets are never exported.
+- CSRF checks, rate limiting, Helmet security headers, and HTTP-only cookies.
+- Profile exports use an explicit allowlist; API keys and secrets are never exported.
 - Loading a profile only restores settings. It does not connect to Minecraft or start automation.
 
-## Run locally
-1. Install Node.js 20 or newer.
-2. Run `npm install`.
-3. Copy `.env.example` to `.env` and set a long random `SESSION_SECRET`.
-4. Run `npm run dev`.
-5. Open `http://localhost:3000`.
+## Setup
+1. Provision a **persistent PostgreSQL database** with a provider of your choice.
+2. Set `DATABASE_URL` to its connection string. Set `DATABASE_SSL=require` if the provider requires TLS.
+3. Set `SESSION_SECRET` to a long random secret.
+4. Set `NODE_ENV=production` when deployed behind HTTPS.
+5. Run `npm install`, then `npm start`.
+6. The app creates its required database tables on startup.
 
-## Important prototype limits
-- Workspace data and Express sessions currently use in-memory storage. Data is temporary and this is **not production-ready**. Before deployment, replace both with a persistent session store and database, and enforce ownership in every database query.
-- There is intentionally no public bot-start endpoint and no Minecraft connection implementation in this prototype.
-- Any future runtime must be restricted to servers where the operator has permission, protected by authentication and per-user ownership checks, and started only through an explicit user action.
+For local development, copy `.env.example` to `.env` and fill in the database connection details. A PostgreSQL server must be available; this version no longer falls back to temporary in-memory storage.
+
+## Persistence and privacy notes
+- Profiles are permanent for the same browser session as long as the browser retains its session cookie and the PostgreSQL database is retained.
+- Clearing cookies or using another browser creates a different workspace. Cross-device profile access requires user accounts; that is a planned next step.
+- Use a managed persistent database. Do not use an ephemeral database or delete the database volume if you need to retain profiles.
+- The app scopes every profile read/write/delete to the workspace ID stored in that browser's server-side session.
+- This prototype has no public bot-start endpoint and does not connect to Minecraft.
 - Never commit `.env`, Gemini API keys, access tokens, or passwords. Store secrets in the hosting provider's secret manager.
-- Do not expose an unauthenticated public endpoint that lets visitors connect bots to arbitrary servers.
+- Before public launch, add authenticated accounts, account recovery, database backups, and automated isolation tests.
 
-## Next engineering steps
-1. Add automated tests for session isolation and profile ownership.
-2. Replace in-memory workspaces and Express MemoryStore with persistent, owner-scoped storage.
-3. Add authenticated accounts and deployment hardening.
-4. Add a server-side Gemini decision service with strict usage limits.
-5. Only then consider an authorized Minecraft runtime and manual connection controls.
+## Next steps
+1. Add account login so users can access their own profiles across devices.
+2. Add automated tests for session isolation and profile ownership.
+3. Add a server-side Gemini decision service with strict usage limits.
+4. Only then consider an authorized Minecraft runtime with explicit manual connection controls.
