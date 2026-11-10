@@ -83,6 +83,8 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS combat_mode VARCHAR(20) NOT NULL DEFAULT 'smp'");
+  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS fighting_style VARCHAR(20) NOT NULL DEFAULT 'balanced'");
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
   await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'system', message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
@@ -138,17 +140,20 @@ function validateProfile(input) {
   const serverPort = Number(input?.serverPort || 25565);
   const minecraftVersion = cleanText(input?.minecraftVersion || "auto", 20);
   const thinkingLevel = ["low", "medium", "high"].includes(input?.thinkingLevel) ? input.thinkingLevel : "medium";
+  const combatMode = ["smp", "cpvp", "sword", "axe", "uhc", "pot"].includes(input?.combatMode) ? input.combatMode : "smp";
+  const fightingStyle = ["balanced", "aggressive", "defensive", "tactical", "adaptive"].includes(input?.fightingStyle) ? input.fightingStyle : "balanced";
   if (!name) return { error: "Enter a profile name." };
   if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return { error: "Bot name must be 3–16 letters, numbers, or underscores." };
   if (!serverHost || !/^[a-zA-Z0-9.-]+$/.test(serverHost) || serverHost.startsWith(".") || serverHost.endsWith(".")) return { error: "Enter a valid hostname without a URL or protocol." };
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) return { error: "Port must be between 1 and 65535." };
-  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel } };
+  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel, combatMode, fightingStyle } };
 }
 function publicProfile(row) {
   return {
     id: row.id, name: row.name, botName: row.bot_name, serverHost: row.server_host,
     serverPort: row.server_port, minecraftVersion: row.minecraft_version,
     aiProvider: row.ai_provider, thinkingLevel: row.thinking_level,
+    combatMode: row.combat_mode || "smp", fightingStyle: row.fighting_style || "balanced",
     updatedAt: row.updated_at
   };
 }
@@ -187,9 +192,9 @@ app.post("/api/profiles", requireCsrf, async (req, res) => {
   const p = parsed.value;
   const id = crypto.randomUUID();
   const result = await pool.query(
-    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel]
+    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level,combat_mode,fighting_style)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle]
   );
   res.status(201).json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(workspaceId) });
 });
@@ -198,9 +203,9 @@ app.put("/api/profiles/:id", requireCsrf, async (req, res) => {
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   const p = parsed.value;
   const result = await pool.query(
-    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,updated_at=NOW()
-     WHERE workspace_id=$8 AND id=$9 RETURNING *`,
-    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,req.session.workspaceId,req.params.id]
+    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,combat_mode=$8,fighting_style=$9,updated_at=NOW()
+     WHERE workspace_id=$10 AND id=$11 RETURNING *`,
+    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,req.session.workspaceId,req.params.id]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Profile not found in this session." });
   res.json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(req.session.workspaceId) });
@@ -222,7 +227,7 @@ app.post("/api/profiles/:id/load", requireCsrf, async (req, res) => {
 });
 app.get("/api/profiles/export", async (req, res) => {
   const profiles = await listProfiles(req.session.workspaceId);
-  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
+  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
 });
 // The vault API deliberately returns metadata only. Passwords are encrypted at rest
 // with AES-256-GCM and are never sent back to the browser after saving.
