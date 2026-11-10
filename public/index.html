@@ -72,12 +72,6 @@
         <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
         <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
         <div class="combat-note"><strong>Combat engine status</strong><span>Mode, style, and AI preference are saved with the profile. Live combat is not active yet.</span></div>
-        <div class="attack-panel">
-          <div class="section-head"><div><p class="eyebrow">DEDICATED ATTACK</p><h3>Use current gear · no game-mode preset</h3><p class="muted">Uses a sword or axe if available; otherwise it can attack unarmed.</p></div><span class="tag" id="attack-status">STOPPED</span></div>
-          <div class="combat-grid"><label>Player<select id="attack-player"><option value="">Choose a player…</option></select></label><label class="target-confirm"><input id="attack-approved" type="checkbox"> This player opted in and PvP is allowed here.</label></div>
-          <div class="actions"><button class="button primary" id="attack-start" type="button">Start Attack</button><button class="button danger" id="attack-stop" type="button" disabled>Stop Attack</button></div>
-          <p class="hint" id="attack-message">Attack remains stopped until you start it manually. It stops if the selected player leaves.</p>
-        </div>
       </section>
       <section class="panel section" id="utilities">
         <div class="section-head"><div><p class="eyebrow">BOT UTILITIES</p><h2>Auto Totem & Wander</h2><p class="muted">These controls apply to the connected bot and reset to enabled when a new bot session starts.</p></div><span class="tag">RUNTIME CONTROLS</span></div>
