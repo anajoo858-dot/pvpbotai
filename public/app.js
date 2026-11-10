@@ -25,20 +25,6 @@ async function runInventoryAction(action){
   try{await api("/api/inventory/action",{method:"POST",body:JSON.stringify({slot:selectedInventorySlot,action})});$("inventory-menu").hidden=true;await refreshInventory();}
   catch(error){showFeedback(error.message,true);}
 }
-async function startDedicatedAttack(){
-  const player=$("attack-player").value;
-  if(!player)return $("attack-message").textContent="Choose a player first.";
-  if(!$("attack-approved").checked)return $("attack-message").textContent="Confirm the player opted in and the server permits PvP.";
-  try{
-    await api("/api/target",{method:"POST",body:JSON.stringify({player,approved:true})});
-    const result=await api("/api/combat/start",{method:"POST",body:JSON.stringify({player,approved:true})});
-    $("attack-status").textContent="ACTIVE";$("attack-start").disabled=true;$("attack-stop").disabled=false;$("attack-message").textContent="Attacking "+result.targetPlayer+".";
-  }catch(error){$("attack-message").textContent=error.message;}
-}
-async function stopDedicatedAttack(){
-  try{await api("/api/combat/stop",{method:"POST",body:"{}"});$("attack-status").textContent="STOPPED";$("attack-start").disabled=false;$("attack-stop").disabled=true;$("attack-message").textContent="Attack stopped.";}
-  catch(error){$("attack-message").textContent=error.message;}
-}
 async function equipArmor(){
   try{await api("/api/armor",{method:"POST",body:JSON.stringify({useElytra:$("armor-elytra").checked})});$("armor-status").textContent="Best available armor equipped.";await refreshMonitor();await refreshInventory();}
   catch(error){$("armor-status").textContent=error.message;}
@@ -305,16 +291,16 @@ async function sendConsoleMessage(event) {
 }
 async function refreshPlayers() {
   try {
-    const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), attackSelect=$("attack-player"), current = select.value, attackCurrent=attackSelect.value;
-    list.replaceChildren(); select.replaceChildren(); attackSelect.replaceChildren();
-    const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Choose an online player…"; select.append(empty); const attackEmpty=document.createElement("option");attackEmpty.value="";attackEmpty.textContent="Choose a player…";attackSelect.append(attackEmpty);
+    const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), current = select.value;
+    list.replaceChildren(); select.replaceChildren();
+    const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Choose an online player…"; select.append(empty);
     for (const p of data.players || []) {
-      const option = document.createElement("option"); option.value=p.username; option.textContent=p.username+(p.ping!=null?" · "+p.ping+" ms":""); select.append(option); const attackOption=document.createElement("option");attackOption.value=p.username;attackOption.textContent=option.textContent;attackSelect.append(attackOption);
+      const option = document.createElement("option"); option.value=p.username; option.textContent=p.username+(p.ping!=null?" · "+p.ping+" ms":""); select.append(option);
       const row=document.createElement("div");row.className="player-row";
       const name=document.createElement("strong");name.textContent=p.username;
       const online=document.createElement("span");online.className="player-online";online.textContent="ONLINE";row.append(name,online);list.append(row);
     }
-    if ([...select.options].some(o=>o.value===current)) select.value=current; if([...attackSelect.options].some(o=>o.value===attackCurrent))attackSelect.value=attackCurrent;
+    if ([...select.options].some(o=>o.value===current)) select.value=current;
     $("player-count").textContent=(data.players||[]).length+" ONLINE";
     $("players-status").textContent=data.connected?"Live roster · refreshes every 5 seconds":"Connect the bot to view players.";
     $("set-target").disabled=!data.connected||!select.value;
@@ -507,8 +493,6 @@ async function init() {
     $("refresh-players").addEventListener("click", refreshPlayers);
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
     $("set-target").addEventListener("click", () => setOpponent(false));
-    $("attack-start").addEventListener("click",startDedicatedAttack);
-    $("attack-stop").addEventListener("click",stopDedicatedAttack);
     $("inventory-refresh").addEventListener("click",refreshInventory);
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
