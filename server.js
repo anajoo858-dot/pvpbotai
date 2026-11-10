@@ -97,6 +97,14 @@ async function initializeDatabase() {
     )
   `);
   await pool.query("CREATE INDEX IF NOT EXISTS auth_vault_workspace_idx ON auth_vault(workspace_id)");
+  await pool.query(`CREATE TABLE IF NOT EXISTS bot_server_vault (
+    id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    bot_name VARCHAR(16) NOT NULL, server_host VARCHAR(253) NOT NULL, server_port INTEGER NOT NULL,
+    encrypted_password BYTEA NOT NULL, iv BYTEA NOT NULL, auth_tag BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(workspace_id, bot_name, server_host, server_port)
+  )`);
+  await pool.query("CREATE INDEX IF NOT EXISTS bot_server_vault_lookup_idx ON bot_server_vault(workspace_id, bot_name, updated_at DESC)");
 }
 
 async function ensureWorkspace(req) {
@@ -217,38 +225,53 @@ app.get("/api/profiles/export", async (req, res) => {
 });
 // The vault API deliberately returns metadata only. Passwords are encrypted at rest
 // with AES-256-GCM and are never sent back to the browser after saving.
-app.get("/api/vault/:profileId", async (req, res) => {
-  const result = await pool.query(
-    "SELECT register_format, updated_at FROM auth_vault WHERE workspace_id=$1 AND profile_id=$2",
-    [req.session.workspaceId, req.params.profileId]
-  );
-  if (!result.rows[0]) return res.json({ configured: false, registerFormat: "auto" });
-  res.json({ configured: true, registerFormat: result.rows[0].register_format, updatedAt: result.rows[0].updated_at });
+function decryptVaultPassword(row) {
+  const decipher = crypto.createDecipheriv("aes-256-gcm", vaultKey(), row.iv);
+  decipher.setAuthTag(row.auth_tag);
+  return Buffer.concat([decipher.update(row.encrypted_password), decipher.final()]).toString("utf8");
+}
+function validateVaultIdentity(input) {
+  const botName = cleanText(input?.botName, 16);
+  const serverHost = cleanText(input?.serverHost, 253);
+  const serverPort = Number(input?.serverPort || 25565);
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return { error: "Choose a valid bot name." };
+  if (!serverHost || !/^[a-zA-Z0-9.-]+$/.test(serverHost) || serverHost.startsWith(".") || serverHost.endsWith(".")) return { error: "Enter a valid server hostname." };
+  if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) return { error: "Port must be between 1 and 65535." };
+  return { value: { botName, serverHost, serverPort } };
+}
+app.get("/api/vault", async (req, res) => {
+  const botName = cleanText(req.query.botName, 16);
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return res.status(400).json({ error: "A valid botName is required." });
+  const result = await pool.query("SELECT id,bot_name,server_host,server_port,updated_at FROM bot_server_vault WHERE workspace_id=$1 AND bot_name=$2 ORDER BY updated_at DESC", [req.session.workspaceId, botName]);
+  res.json({ entries: result.rows });
 });
-app.put("/api/vault/:profileId", requireCsrf, async (req, res) => {
+app.post("/api/vault", requireCsrf, async (req, res) => {
+  const identity = validateVaultIdentity(req.body);
+  if (identity.error) return res.status(400).json({ error: identity.error });
   const password = typeof req.body?.password === "string" ? req.body.password : "";
-  const registerFormat = ["auto", "single", "double"].includes(req.body?.registerFormat) ? req.body.registerFormat : "auto";
-  if (password.length < 1 || password.length > 128 || /[\\r\\n]/.test(password)) {
-    return res.status(400).json({ error: "Password must be 1–128 characters and cannot contain line breaks." });
-  }
-  const profile = await pool.query("SELECT id FROM profiles WHERE workspace_id=$1 AND id=$2", [req.session.workspaceId, req.params.profileId]);
-  if (!profile.rowCount) return res.status(404).json({ error: "Profile not found in this session." });
+  if (!password || password.length > 128 || /[\\r\\n]/.test(password)) return res.status(400).json({ error: "Password must be 1–128 characters and cannot contain line breaks." });
   let encrypted;
-  try { encrypted = encryptSecret(password); }
-  catch (error) { console.error("Vault encryption is not configured."); return res.status(503).json({ error: "Secure vault is not configured on the server yet." }); }
-  await pool.query(
-    `INSERT INTO auth_vault (profile_id,workspace_id,encrypted_password,iv,auth_tag,register_format,updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,NOW())
-     ON CONFLICT (profile_id) DO UPDATE SET encrypted_password=EXCLUDED.encrypted_password,iv=EXCLUDED.iv,auth_tag=EXCLUDED.auth_tag,register_format=EXCLUDED.register_format,updated_at=NOW()`,
-    [req.params.profileId, req.session.workspaceId, encrypted.ciphertext, encrypted.iv, encrypted.tag, registerFormat]
-  );
-  res.json({ saved: true, configured: true, registerFormat });
+  try { encrypted = encryptSecret(password); } catch { return res.status(503).json({ error: "Secure vault is not configured on the server." }); }
+  const { botName, serverHost, serverPort } = identity.value;
+  const result = await pool.query(`INSERT INTO bot_server_vault (id,workspace_id,bot_name,server_host,server_port,encrypted_password,iv,auth_tag)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    ON CONFLICT (workspace_id,bot_name,server_host,server_port)
+    DO UPDATE SET encrypted_password=EXCLUDED.encrypted_password,iv=EXCLUDED.iv,auth_tag=EXCLUDED.auth_tag,updated_at=NOW()
+    RETURNING id,bot_name,server_host,server_port,updated_at`,
+    [crypto.randomUUID(),req.session.workspaceId,botName,serverHost,serverPort,encrypted.ciphertext,encrypted.iv,encrypted.tag]);
+  res.status(201).json({ entry: result.rows[0], saved: true });
 });
-app.delete("/api/vault/:profileId", requireCsrf, async (req, res) => {
-  await pool.query("DELETE FROM auth_vault WHERE workspace_id=$1 AND profile_id=$2", [req.session.workspaceId, req.params.profileId]);
-  res.json({ deleted: true, configured: false });
+app.post("/api/vault/:id/reveal", requireCsrf, async (req, res) => {
+  const result = await pool.query("SELECT encrypted_password,iv,auth_tag FROM bot_server_vault WHERE workspace_id=$1 AND id=$2", [req.session.workspaceId,req.params.id]);
+  if (!result.rows[0]) return res.status(404).json({ error: "Vault entry not found." });
+  try { res.json({ password: decryptVaultPassword(result.rows[0]) }); }
+  catch { res.status(503).json({ error: "Could not decrypt vault entry. Check the encryption key." }); }
 });
-
+app.delete("/api/vault/:id", requireCsrf, async (req, res) => {
+  const result = await pool.query("DELETE FROM bot_server_vault WHERE workspace_id=$1 AND id=$2 RETURNING id", [req.session.workspaceId,req.params.id]);
+  if (!result.rowCount) return res.status(404).json({ error: "Vault entry not found." });
+  res.json({ deleted: true });
+});
 app.get("/api/logs", async (req, res) => {
   const level = ["INFO", "WARN", "ERROR", "DEBUG"].includes(req.query.level) ? req.query.level : null;
   const search = cleanText(req.query.q, 120) || null;
