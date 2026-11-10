@@ -116,3 +116,14 @@ input:focus,select:focus{border-color:rgba(255,255,255,.72);background:rgba(0,0,
 .glass-option{color:#eee}
 .glass-option:hover,.glass-option[aria-selected=true]{background:rgba(255,255,255,.13);color:#fff}
 @media(max-width:680px){.combat-grid{grid-template-columns:1fr}}
+
+/* Live roster and opponent controls */
+.player-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0}
+.player-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:9px}
+.player-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border:1px solid rgba(255,255,255,.13);border-radius:15px;background:rgba(255,255,255,.045);backdrop-filter:blur(18px)}
+.player-online{font-size:10px;letter-spacing:.12em;color:#d8d8d8}
+.target-panel{margin-top:22px;padding:18px;border:1px solid rgba(255,255,255,.14);border-radius:20px;background:rgba(255,255,255,.035)}
+.target-panel h3{margin:0 0 14px;font-size:16px}
+.target-confirm{display:flex;align-items:center;gap:10px}
+.target-confirm input{width:auto;accent-color:#fff}
+@media(max-width:600px){.player-toolbar{align-items:flex-start;flex-direction:column}.player-list{grid-template-columns:1fr}}
