@@ -18,35 +18,39 @@
     <main>
       <header class="topbar"><div><p class="eyebrow">MINECRAFT AUTOMATION WORKSPACE</p><h1>Dashboard</h1></div><span class="status"><i></i> Prototype · Offline</span></header>
       <section class="hero" id="overview">
-        <div><p class="eyebrow">WELCOME BACK</p><h2>Your control room.</h2><p class="muted">Manage your saved server settings and AI preferences from one place.</p></div>
+        <div><p class="eyebrow">WELCOME BACK</p><h2>Your control room.</h2><p class="muted">Manage saved server configurations and AI preferences in one place.</p></div>
         <div class="hero-icon">✦</div>
       </section>
       <section class="stats">
-        <article class="panel stat"><span>BOT STATUS</span><strong id="bot-status">Disconnected</strong><small>Connection controls are not enabled yet</small></article>
+        <article class="panel stat"><span>BOT STATUS</span><strong id="bot-status">Disconnected</strong><small>No Minecraft connection is active</small></article>
         <article class="panel stat"><span>SAVED PROFILES</span><strong id="profile-count">—</strong><small>Private to this browser session</small></article>
-        <article class="panel stat"><span>AI PROVIDER</span><strong>Gemini</strong><small>API key stays server-side</small></article>
+        <article class="panel stat"><span>AI PROVIDER</span><strong>Gemini</strong><small>API key belongs on the server only</small></article>
       </section>
       <section class="panel section" id="profiles">
-        <div class="section-head"><div><p class="eyebrow">CONFIGURATION</p><h2>Load Profile</h2><p class="muted">Choose a saved setup. Loading restores settings only; it will never connect automatically.</p></div><span class="tag">SESSION-PRIVATE</span></div>
-        <div class="profile-row"><div class="profile-icon">⌘</div><div class="profile-info"><strong id="profile-name">Main SMP</strong><small id="profile-meta">Loading profile…</small></div><button class="button primary" id="load-profile">Load profile</button></div>
+        <div class="section-head"><div><p class="eyebrow">CONFIGURATION</p><h2>Profile manager</h2><p class="muted">Profiles are isolated by browser session. Loading one never starts a bot.</p></div><span class="tag">SESSION-PRIVATE</span></div>
+        <div class="profile-tools">
+          <label class="profile-picker">Saved profiles<select id="profile-select"></select></label>
+          <div class="actions"><button class="button primary" id="load-profile">Load profile</button><button class="button secondary" id="save-profile">Save as new</button><button class="button danger" id="delete-profile">Delete</button><button class="button secondary" id="export-profiles">Export JSON</button></div>
+        </div>
         <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
       </section>
       <section class="panel section" id="settings">
         <div class="section-head"><div><p class="eyebrow">ACTIVE CONFIGURATION</p><h2>Server settings</h2></div><span class="tag">NOT CONNECTED</span></div>
         <div class="form-grid">
+          <label>Profile name<input id="profile-name" value="Main SMP" maxlength="40"></label>
           <label>Bot name<input id="bot-name" value="GeminiBot" maxlength="16"></label>
-          <label>Minecraft version<input id="mc-version" value="auto"></label>
-          <label class="wide">Server address<input id="server-host" value="play.example.net"></label>
+          <label class="wide">Server address<input id="server-host" value="play.example.net" maxlength="253"></label>
           <label>Port<input id="server-port" type="number" min="1" max="65535" value="25565"></label>
+          <label>Minecraft version<input id="mc-version" value="auto" maxlength="20"></label>
           <label>AI thinking level<select id="thinking-level"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
         </div>
-        <p class="hint">These are local session settings for now. No bot connection is made by this page.</p>
+        <p class="hint">Save as new creates a separate profile. No connection or game action is triggered.</p>
       </section>
       <section class="panel section" id="activity">
         <div class="section-head"><div><p class="eyebrow">LIVE FEED</p><h2>Activity</h2></div></div>
-        <div class="empty"><span>◌</span><div><strong>Waiting for activity</strong><p class="muted">Events will appear here when the authorized bot runtime is added.</p></div></div>
+        <div class="empty"><span>◌</span><div><strong>Waiting for activity</strong><p class="muted">Events appear here when an authorized runtime is added.</p></div></div>
       </section>
-      <footer>Built for private, permission-based server testing. Never use automation where the server rules prohibit it.</footer>
+      <footer>Use automation only where you have permission and the server rules allow it. This prototype does not connect to Minecraft.</footer>
     </main>
   </div>
 </body>
