@@ -27,7 +27,9 @@ function formValues() {
     serverHost: $("server-host").value,
     serverPort: Number($("server-port").value),
     minecraftVersion: $("mc-version").value || "auto",
-    thinkingLevel: $("thinking-level").value
+    thinkingLevel: $("thinking-level").value,
+    combatMode: $("combat-mode").value,
+    fightingStyle: $("fighting-style").value
   };
 }
 function fillForm(profile) {
@@ -39,6 +41,10 @@ function fillForm(profile) {
   if (!$("vault-server-port").value.trim() || $("vault-server-port").value === "25565") $("vault-server-port").value = profile.serverPort;
   $("mc-version").value = profile.minecraftVersion;
   $("thinking-level").value = profile.thinkingLevel;
+  $("combat-mode").value = profile.combatMode || "smp";
+  $("fighting-style").value = profile.fightingStyle || "balanced";
+  $("combat-mode").dispatchEvent(new Event("change"));
+  $("fighting-style").dispatchEvent(new Event("change"));
 }
 function renderProfiles() {
   const select = $("profile-select");
