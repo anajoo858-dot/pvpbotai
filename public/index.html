@@ -62,6 +62,14 @@
         <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
         <div class="combat-note"><strong>Combat engine status</strong><span>Mode, style, and AI preference are saved with the profile. Live combat is not active yet.</span></div>
       </section>
+      <section class="panel section" id="utilities">
+        <div class="section-head"><div><p class="eyebrow">BOT UTILITIES</p><h2>Auto Totem & Wander</h2><p class="muted">These controls apply to the connected bot and reset to enabled when a new bot session starts.</p></div><span class="tag">RUNTIME CONTROLS</span></div>
+        <div class="combat-grid">
+          <label class="feature-toggle"><span><strong>Auto Totem</strong><small>Automatically equips a spare Totem of Undying into the offhand when it is empty. Requires another totem in inventory.</small></span><input id="feature-auto-totem" type="checkbox" checked></label>
+          <label class="feature-toggle"><span><strong>Idle Wander</strong><small>Short random movements every 5 seconds. Test in a safe, open area and keep it disabled near hazards.</small></span><input id="feature-wander" type="checkbox" checked></label>
+        </div>
+        <p class="hint" id="features-status">Connect the bot to change these settings.</p>
+      </section>
       <section class="panel section" id="players">
         <div class="section-head"><div><p class="eyebrow">LIVE SERVER ROSTER</p><h2>Players & leaderboard</h2><p class="muted">Online players visible to the connected bot. This is a live roster, not a stats ranking.</p></div><span class="tag" id="player-count">0 ONLINE</span></div>
         <div class="player-toolbar"><span class="hint" id="players-status">Connect the bot to view players.</span><button class="button secondary" id="refresh-players" type="button">Refresh</button></div>
