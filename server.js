@@ -69,7 +69,7 @@ async function initializeDatabase() {
     )
   `);
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
-  await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT \"system\", message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+  await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'system', message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
 }
 
