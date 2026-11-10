@@ -1,3 +1,49 @@
+
+let selectedInventorySlot=null,dragInventorySlot=null;
+async function refreshInventory(){
+  try{
+    const data=await api("/api/inventory"),grid=$("inventory-grid");grid.replaceChildren();
+    $("inventory-status").textContent=data.connected?"LIVE":"WAITING";
+    if(!data.connected){grid.textContent="Connect the bot to view its inventory.";return;}
+    for(const entry of data.items||[]){
+      const card=document.createElement("button");card.type="button";card.className="inventory-slot";card.draggable=!!entry.item;card.dataset.slot=String(entry.slot);
+      const num=document.createElement("span");num.className="slot-number";num.textContent="SLOT "+entry.slot;
+      const name=document.createElement("strong");name.textContent=entry.item?entry.item.displayName:"Empty";
+      const count=document.createElement("span");count.className="stack-count";count.textContent=entry.item?"× "+entry.item.count:"—";
+      card.append(num,name,count);
+      card.addEventListener("click",()=>{if(entry.item){selectedInventorySlot=entry.slot;$("inventory-menu-title").textContent=entry.item.displayName+" × "+entry.item.count;$("inventory-menu").hidden=false;}});
+      card.addEventListener("dragstart",e=>{if(!entry.item){e.preventDefault();return;}dragInventorySlot=entry.slot;e.dataTransfer.setData("text/plain",String(entry.slot));});
+      card.addEventListener("dragover",e=>{e.preventDefault();card.classList.add("drag-over");});
+      card.addEventListener("dragleave",()=>card.classList.remove("drag-over"));
+      card.addEventListener("drop",async e=>{e.preventDefault();card.classList.remove("drag-over");const from=Number(e.dataTransfer.getData("text/plain")||dragInventorySlot),to=entry.slot;if(from===to||!from)return;try{await api("/api/inventory/move",{method:"POST",body:JSON.stringify({from,to})});await refreshInventory();}catch(err){showFeedback(err.message,true);}});
+      grid.append(card);
+    }
+  }catch(error){$("inventory-status").textContent="ERROR";showFeedback(error.message,true);}
+}
+async function runInventoryAction(action){
+  if(selectedInventorySlot===null)return;
+  try{await api("/api/inventory/action",{method:"POST",body:JSON.stringify({slot:selectedInventorySlot,action})});$("inventory-menu").hidden=true;await refreshInventory();}
+  catch(error){showFeedback(error.message,true);}
+}
+async function startDedicatedAttack(){
+  const player=$("attack-player").value;
+  if(!player)return $("attack-message").textContent="Choose a player first.";
+  if(!$("attack-approved").checked)return $("attack-message").textContent="Confirm the player opted in and the server permits PvP.";
+  try{
+    await api("/api/target",{method:"POST",body:JSON.stringify({player,approved:true})});
+    const result=await api("/api/combat/start",{method:"POST",body:JSON.stringify({player,approved:true})});
+    $("attack-status").textContent="ACTIVE";$("attack-start").disabled=true;$("attack-stop").disabled=false;$("attack-message").textContent="Attacking "+result.targetPlayer+".";
+  }catch(error){$("attack-message").textContent=error.message;}
+}
+async function stopDedicatedAttack(){
+  try{await api("/api/combat/stop",{method:"POST",body:"{}"});$("attack-status").textContent="STOPPED";$("attack-start").disabled=false;$("attack-stop").disabled=true;$("attack-message").textContent="Attack stopped.";}
+  catch(error){$("attack-message").textContent=error.message;}
+}
+async function equipArmor(){
+  try{await api("/api/armor",{method:"POST",body:JSON.stringify({useElytra:$("armor-elytra").checked})});$("armor-status").textContent="Best available armor equipped.";await refreshMonitor();await refreshInventory();}
+  catch(error){$("armor-status").textContent=error.message;}
+}
+
 let csrfToken = "";
 let profiles = [];
 let selectedProfileId = null;
@@ -259,16 +305,16 @@ async function sendConsoleMessage(event) {
 }
 async function refreshPlayers() {
   try {
-    const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), current = select.value;
-    list.replaceChildren(); select.replaceChildren();
-    const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Choose an online player…"; select.append(empty);
+    const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), attackSelect=$("attack-player"), current = select.value, attackCurrent=attackSelect.value;
+    list.replaceChildren(); select.replaceChildren(); attackSelect.replaceChildren();
+    const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Choose an online player…"; select.append(empty); const attackEmpty=document.createElement("option");attackEmpty.value="";attackEmpty.textContent="Choose a player…";attackSelect.append(attackEmpty);
     for (const p of data.players || []) {
-      const option = document.createElement("option"); option.value=p.username; option.textContent=p.username+(p.ping!=null?" · "+p.ping+" ms":""); select.append(option);
+      const option = document.createElement("option"); option.value=p.username; option.textContent=p.username+(p.ping!=null?" · "+p.ping+" ms":""); select.append(option); const attackOption=document.createElement("option");attackOption.value=p.username;attackOption.textContent=option.textContent;attackSelect.append(attackOption);
       const row=document.createElement("div");row.className="player-row";
       const name=document.createElement("strong");name.textContent=p.username;
       const online=document.createElement("span");online.className="player-online";online.textContent="ONLINE";row.append(name,online);list.append(row);
     }
-    if ([...select.options].some(o=>o.value===current)) select.value=current;
+    if ([...select.options].some(o=>o.value===current)) select.value=current; if([...attackSelect.options].some(o=>o.value===attackCurrent))attackSelect.value=attackCurrent;
     $("player-count").textContent=(data.players||[]).length+" ONLINE";
     $("players-status").textContent=data.connected?"Live roster · refreshes every 5 seconds":"Connect the bot to view players.";
     $("set-target").disabled=!data.connected||!select.value;
@@ -461,6 +507,12 @@ async function init() {
     $("refresh-players").addEventListener("click", refreshPlayers);
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
     $("set-target").addEventListener("click", () => setOpponent(false));
+    $("attack-start").addEventListener("click",startDedicatedAttack);
+    $("attack-stop").addEventListener("click",stopDedicatedAttack);
+    $("inventory-refresh").addEventListener("click",refreshInventory);
+    $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
+    document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
+    $("armor-equip").addEventListener("click",equipArmor);
     $("clear-target").addEventListener("click", () => setOpponent(true));
     $("load-profile").addEventListener("click", loadProfile);
     $("save-profile").addEventListener("click", saveProfile);
@@ -474,6 +526,8 @@ async function init() {
     await refreshFeatures();
     setInterval(refreshBotState, 5000);
     await refreshMonitor();
+    await refreshInventory();
+    setInterval(refreshInventory, 5000);
     setInterval(refreshMonitor, 2000);
     setInterval(refreshFeatures, 5000);
     setInterval(refreshPlayers, 5000);
