@@ -1,6 +1,8 @@
 let csrfToken = "";
 let profiles = [];
 let selectedProfileId = null;
+let autosaveTimer = null;
+let autosavePromise = Promise.resolve();
 const $ = (id) => document.getElementById(id);
 
 async function api(url, options = {}) {
@@ -102,6 +104,47 @@ async function saveVaultEntry() {
     await refreshVault();
   } catch(e) { showFeedback("Save failed: "+e.message,true); }
   finally { button.disabled=false; button.textContent="Save password"; }
+}
+async function persistCurrentSettings() {
+  if (!selectedProfileId) return;
+  const data = await api("/api/profiles/" + encodeURIComponent(selectedProfileId), {method:"PUT",body:JSON.stringify(formValues())});
+  profiles = data.profiles;
+  selectedProfileId = data.profile.id;
+  renderProfiles();
+  $("features-status").textContent = "Settings saved automatically.";
+}
+function scheduleAutosave() {
+  if (!selectedProfileId) return;
+  clearTimeout(autosaveTimer);
+  $("features-status").textContent = "Unsaved changes…";
+  autosaveTimer = setTimeout(() => {
+    autosavePromise = persistCurrentSettings().catch(error => {
+      $("features-status").textContent = "Auto-save paused: " + error.message;
+    });
+  }, 700);
+}
+async function refreshFeatures() {
+  try {
+    const data = await api("/api/features");
+    $("feature-auto-totem").checked = data.autoTotem;
+    $("feature-wander").checked = data.wander;
+    $("feature-auto-totem").disabled = !data.connected;
+    $("feature-wander").disabled = !data.connected;
+    $("features-status").textContent = data.connected ? "Connected · changes apply immediately." : "Connect the bot to change these settings.";
+  } catch {}
+}
+async function updateFeatures() {
+  const autoTotem = $("feature-auto-totem").checked;
+  const wander = $("feature-wander").checked;
+  try {
+    const data = await api("/api/features", {method:"POST",body:JSON.stringify({autoTotem,wander})});
+    $("feature-auto-totem").checked = data.autoTotem;
+    $("feature-wander").checked = data.wander;
+    $("features-status").textContent = "Runtime settings updated.";
+  } catch(error) {
+    $("features-status").textContent = error.message;
+    await refreshFeatures();
+  }
 }
 async function loadProfile() {
   const profile = selectedProfile();
@@ -234,12 +277,15 @@ async function refreshBotState() {
   } catch {}
 }
 async function connectBot() {
+  clearTimeout(autosaveTimer);
+  try { await persistCurrentSettings(); } catch(error) { return showFeedback("Could not save settings: " + error.message,true); }
   const profile = selectedProfile();
   if (!profile) return showFeedback("Select a saved profile first.", true);
   try {
     const result = await api("/api/bot/connect", { method:"POST", body:JSON.stringify({profileId:profile.id}) });
     showFeedback(result.message);
     await refreshBotState();
+    await refreshFeatures();
     await refreshPlayers();
     await refreshLogs();
   } catch(error) { showFeedback(error.message,true); }
@@ -354,10 +400,21 @@ async function init() {
     if (active) fillForm(active);
     $("profile-select").addEventListener("change", async () => {
       const profile = selectedProfile();
-      if (profile) { fillForm(profile); $("vault-server-host").value=profile.serverHost; $("vault-server-port").value=String(profile.serverPort); }
+      if (profile) {
+        selectedProfileId = profile.id;
+        await loadProfile();
+        $("vault-server-host").value=profile.serverHost;
+        $("vault-server-port").value=String(profile.serverPort);
+      }
       await refreshVault();
     });
     $("bot-name").addEventListener("change", refreshVault);
+    for (const id of ["profile-name","bot-name","server-host","server-port","mc-version","thinking-level","combat-mode","fighting-style","ai-mode"]) {
+      $(id).addEventListener("input", scheduleAutosave);
+      $(id).addEventListener("change", scheduleAutosave);
+    }
+    $("feature-auto-totem").addEventListener("change", updateFeatures);
+    $("feature-wander").addEventListener("change", updateFeatures);
     $("vault-save").addEventListener("click", saveVaultEntry);
     $("vault-refresh").addEventListener("click", refreshVault);
     $("connect-bot").addEventListener("click", connectBot);
@@ -374,7 +431,9 @@ async function init() {
     connectLogStream();
     await refreshVault();
     await refreshBotState();
+    await refreshFeatures();
     setInterval(refreshBotState, 5000);
+    setInterval(refreshFeatures, 5000);
     setInterval(refreshPlayers, 5000);
     await refreshLogs();
   } catch (error) { showFeedback(error.message, true); }
