@@ -25,3 +25,5 @@ nav{grid-template-columns:1fr}
 .vault-table-head{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.7px}
 .vault-row .vault-masked{letter-spacing:2px;color:#b8c0d1}.vault-actions{display:flex;gap:7px;flex-wrap:wrap}.vault-actions .button{padding:7px 10px;font-size:11px}.vault-list{margin:6px 0 16px}
 @media(max-width:760px){.vault-entry-form{grid-template-columns:1fr 1fr}.vault-entry-form label:first-child,.vault-entry-form label:nth-child(3){grid-column:1/-1}.vault-entry-form button{grid-column:1/-1}.vault-table-head{display:none}.vault-row{grid-template-columns:1fr 1fr;gap:7px}.vault-row span:nth-child(1)::before{content:"Server: ";color:var(--muted)}.vault-row span:nth-child(2)::before{content:"Port: ";color:var(--muted)}.vault-row span:nth-child(3)::before{content:"Password: ";color:var(--muted)}.vault-actions{grid-column:1/-1}}
+
+.bot-controls{align-items:center;margin-top:18px}.bot-controls .hint{margin:0}
