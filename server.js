@@ -6,6 +6,7 @@ const PgSession = require("connect-pg-simple")(session);
 const { Pool } = require("pg");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
+const activeBots = new Map();
 
 const app = express();
 const logStreams = new Map();
@@ -259,6 +260,14 @@ app.post("/api/vault", requireCsrf, async (req, res) => {
     DO UPDATE SET encrypted_password=EXCLUDED.encrypted_password,iv=EXCLUDED.iv,auth_tag=EXCLUDED.auth_tag,updated_at=NOW()
     RETURNING id,bot_name,server_host,server_port,updated_at`,
     [crypto.randomUUID(),req.session.workspaceId,botName,serverHost,serverPort,encrypted.ciphertext,encrypted.iv,encrypted.tag]);
+  const running = activeBots.get(req.session.workspaceId);
+  if (running && running.botName === botName && running.serverHost === serverHost && running.serverPort === serverPort) {
+    running.password = password;
+    if (running.awaitingCredentials && running.lastPromptMode) {
+      running.awaitingCredentials = false;
+      sendVaultAuth(running, running.lastPromptMode).catch(()=>{});
+    }
+  }
   res.status(201).json({ entry: result.rows[0], saved: true });
 });
 app.post("/api/vault/:id/reveal", requireCsrf, async (req, res) => {
@@ -288,7 +297,100 @@ app.get("/api/logs/stream", async (req, res) => {
   logStreams.get(workspaceId).add(res);
   req.on("close", () => { const clients = logStreams.get(workspaceId); clients?.delete(res); if (clients?.size === 0) logStreams.delete(workspaceId); });
 });
-app.get("/api/state", (req, res) => res.json({ botStatus: "disconnected", connected: false, note: "Minecraft runtime is not connected in this prototype." }));
+function botPublicState(runtime) {
+  if (!runtime) return { botStatus: "disconnected", connected: false };
+  return { botStatus: runtime.status, connected: ["connecting","connected","authenticating","authenticated"].includes(runtime.status),
+    botName: runtime.botName, serverHost: runtime.serverHost, serverPort: runtime.serverPort, authStatus: runtime.authStatus || "unknown" };
+}
+function authPromptType(message) {
+  const value = String(message || "").toLowerCase();
+  if (/\b(register|registration)\b/.test(value) && (/\/register\b/.test(value) || /please register|register to|register first|not registered/.test(value))) {
+    return /two passwords|twice|confirm.*password|password.*confirm|<password>.*<password>/.test(value) ? "register-double" : "register-single";
+  }
+  if (/\b(login|log in|authenticate|authentication)\b/.test(value) &&
+      (/\/login\b/.test(value) || /please login|please log in|not logged|authenticate to|enter.*password/.test(value))) return "login";
+  return null;
+}
+async function sendVaultAuth(runtime, mode) {
+  if (!runtime || !runtime.bot || !runtime.password || runtime.authAttempts >= 2) return false;
+  const command = mode === "login" ? "/login " + runtime.password :
+    mode === "register-double" ? "/register " + runtime.password + " " + runtime.password :
+    "/register " + runtime.password;
+  runtime.authAttempts += 1; runtime.authStatus = "authenticating"; runtime.status = "authenticating";
+  try {
+    runtime.bot.chat(command);
+    await writeWorkspaceLog(runtime.workspaceId, "INFO", "Sent saved server authentication command. Password hidden.", "auth");
+    return true;
+  } catch {
+    runtime.authStatus = "error";
+    await writeWorkspaceLog(runtime.workspaceId, "ERROR", "Could not send the server authentication command.", "auth");
+    return false;
+  }
+}
+app.get("/api/state", (req, res) => res.json(botPublicState(activeBots.get(req.session.workspaceId))));
+app.post("/api/bot/connect", requireCsrf, async (req, res) => {
+  const profile = await getProfile(req.session.workspaceId, req.body?.profileId);
+  if (!profile) return res.status(404).json({ error: "Save and select a profile before connecting." });
+  const existing = activeBots.get(req.session.workspaceId);
+  if (existing && ["connecting","connected","authenticating","authenticated"].includes(existing.status)) return res.status(409).json({ error: "A bot is already active in this browser session. Disconnect it first." });
+  const saved = await pool.query("SELECT encrypted_password,iv,auth_tag FROM bot_server_vault WHERE workspace_id=$1 AND bot_name=$2 AND server_host=$3 AND server_port=$4",
+    [req.session.workspaceId,profile.botName,profile.serverHost,profile.serverPort]);
+  let password = null;
+  if (saved.rows[0]) {
+    try { password = decryptVaultPassword(saved.rows[0]); }
+    catch { return res.status(503).json({ error: "Could not unlock the saved server password. Check the vault encryption key." }); }
+  }
+  let mineflayer;
+  try { mineflayer = require("mineflayer"); }
+  catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
+  const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null };
+  activeBots.set(req.session.workspaceId,runtime);
+  try {
+    const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline",hideErrors:true };
+    if (profile.minecraftVersion && profile.minecraftVersion !== "auto") options.version = profile.minecraftVersion;
+    runtime.bot = mineflayer.createBot(options);
+    runtime.bot.on("login",()=>{runtime.status="connected";writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft connection established for "+runtime.botName+".","bot").catch(()=>{});});
+    runtime.bot.on("spawn",()=>writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world.","bot").catch(()=>{}));
+    runtime.bot.on("messagestr",(message)=>{
+      const mode = authPromptType(message);
+      if (mode && runtime.authStatus !== "authenticated") {
+        runtime.lastPromptMode = mode;
+        if (runtime.password) sendVaultAuth(runtime,mode).catch(()=>{});
+        else {
+          runtime.awaitingCredentials = true; runtime.authStatus = "needs-password";
+          writeWorkspaceLog(runtime.workspaceId,"WARN","Server requested authentication, but this bot/server has no saved password. Save it in the vault, then the bot will retry.","auth").catch(()=>{});
+        }
+        return;
+      }
+      const lower = String(message || "").toLowerCase();
+      if (/successfully logged in|login successful|successfully registered|registration successful|you are now logged in|authenticated successfully/.test(lower)) {
+        runtime.authStatus="authenticated";runtime.status="authenticated";runtime.awaitingCredentials=false;runtime.authAttempts=0;
+        writeWorkspaceLog(runtime.workspaceId,"INFO","Server authentication confirmed.","auth").catch(()=>{});
+      } else if (/incorrect password|wrong password|invalid password|already registered|already logged in/.test(lower)) {
+        runtime.authStatus="failed";runtime.status="connected";
+        writeWorkspaceLog(runtime.workspaceId,"WARN","Server did not accept the saved authentication attempt. Check the vault entry and server instructions.","auth").catch(()=>{});
+      }
+    });
+    runtime.bot.on("kicked",()=>writeWorkspaceLog(runtime.workspaceId,"WARN","Server kicked the bot. Check server access and authentication requirements.","bot").catch(()=>{}));
+    runtime.bot.on("error",()=>writeWorkspaceLog(runtime.workspaceId,"ERROR","Minecraft connection error. Check the server address, version, and access settings.","bot").catch(()=>{}));
+    runtime.bot.on("end",()=>{runtime.status="disconnected";runtime.authStatus="unknown";writeWorkspaceLog(runtime.workspaceId,"WARN","Minecraft connection ended.","bot").catch(()=>{});});
+    await writeWorkspaceLog(runtime.workspaceId,"INFO","Connecting "+profile.botName+" to "+profile.serverHost+":"+profile.serverPort+".","bot");
+    res.status(202).json({ ...botPublicState(runtime), message: password ? "Connecting. Saved credentials will be used if the server requests authentication." : "Connecting. Add this server's password to the vault if the server requests authentication." });
+  } catch {
+    activeBots.delete(req.session.workspaceId);
+    res.status(502).json({ error: "Could not start the Minecraft connection. Check the server and runtime logs." });
+  }
+});
+app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if (!runtime) return res.json({botStatus:"disconnected",connected:false});
+  runtime.status="disconnecting";
+  try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
+  runtime.status="disconnected";runtime.authStatus="unknown";activeBots.delete(req.session.workspaceId);
+  await writeWorkspaceLog(req.session.workspaceId,"INFO","Bot disconnected from the dashboard.","bot");
+  res.json({botStatus:"disconnected",connected:false});
+});
 app.use(express.static(path.join(__dirname, "public")));
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 
