@@ -113,5 +113,5 @@ app.get("/api/profiles/export", (req, res) => {
 });
 app.get("/api/state", (req, res) => res.json({ botStatus: workspaceFor(req).botStatus, connected: false, note: "Minecraft runtime is not connected in this prototype." }));
 app.use(express.static(path.join(__dirname, "public")));
-app.get("*", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
+app.get("/{*splat}", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
 app.listen(port, () => console.log(`PvPBotAI dashboard listening on http://localhost:${port}`));
