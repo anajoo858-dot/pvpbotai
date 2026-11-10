@@ -29,7 +29,8 @@ function formValues() {
     minecraftVersion: $("mc-version").value || "auto",
     thinkingLevel: $("thinking-level").value,
     combatMode: $("combat-mode").value,
-    fightingStyle: $("fighting-style").value
+    fightingStyle: $("fighting-style").value,
+    aiMode: $("ai-mode").value
   };
 }
 function fillForm(profile) {
@@ -43,6 +44,7 @@ function fillForm(profile) {
   $("thinking-level").value = profile.thinkingLevel;
   $("combat-mode").value = profile.combatMode || "smp";
   $("fighting-style").value = profile.fightingStyle || "balanced";
+  $("ai-mode").value = profile.aiMode || "hybrid";
   $("combat-mode").dispatchEvent(new Event("change"));
   $("fighting-style").dispatchEvent(new Event("change"));
 }
@@ -194,6 +196,33 @@ function connectLogStream() {
   $("logs-level").addEventListener("change", refreshLogs);
   $("logs-search").addEventListener("input", refreshLogs);
 }
+async function refreshPlayers() {
+  try {
+    const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), current = select.value;
+    list.replaceChildren(); select.replaceChildren();
+    const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Choose an online player…"; select.append(empty);
+    for (const p of data.players || []) {
+      const option = document.createElement("option"); option.value=p.username; option.textContent=p.username+(p.ping!=null?" · "+p.ping+" ms":""); select.append(option);
+      const row=document.createElement("div");row.className="player-row";
+      const name=document.createElement("strong");name.textContent=p.username;
+      const online=document.createElement("span");online.className="player-online";online.textContent="ONLINE";row.append(name,online);list.append(row);
+    }
+    if ([...select.options].some(o=>o.value===current)) select.value=current;
+    $("player-count").textContent=(data.players||[]).length+" ONLINE";
+    $("players-status").textContent=data.connected?"Live roster · refreshes every 5 seconds":"Connect the bot to view players.";
+    $("set-target").disabled=!data.connected||!select.value;
+    $("target-status").textContent=data.targetPlayer?"Selected opponent: "+data.targetPlayer:"No opponent selected.";
+    if(!data.players?.length){const p=document.createElement("p");p.className="muted";p.textContent=data.connected?"No other players are visible yet.":"No server roster available.";list.append(p);}
+  } catch(e){$("players-status").textContent="Roster unavailable: "+e.message;}
+}
+async function setOpponent(clear=false) {
+  if(!clear&&!$("target-approved").checked){$("target-status").textContent="Confirm opt-in / approved arena first.";return;}
+  try {
+    const result=await api("/api/target",{method:"POST",body:JSON.stringify({player:clear?"":$("target-player").value,approved:!clear&&$("target-approved").checked})});
+    $("target-status").textContent=result.targetPlayer?"Selected opponent: "+result.targetPlayer:"Target cleared.";
+    $("target-approved").checked=false;
+  } catch(e){$("target-status").textContent=e.message;}
+}
 async function refreshBotState() {
   try {
     const state = await api("/api/state");
@@ -211,6 +240,7 @@ async function connectBot() {
     const result = await api("/api/bot/connect", { method:"POST", body:JSON.stringify({profileId:profile.id}) });
     showFeedback(result.message);
     await refreshBotState();
+    await refreshPlayers();
     await refreshLogs();
   } catch(error) { showFeedback(error.message,true); }
 }
@@ -332,6 +362,9 @@ async function init() {
     $("vault-refresh").addEventListener("click", refreshVault);
     $("connect-bot").addEventListener("click", connectBot);
     $("disconnect-bot").addEventListener("click", disconnectBot);
+    $("refresh-players").addEventListener("click", refreshPlayers);
+    $("set-target").addEventListener("click", () => setOpponent(false));
+    $("clear-target").addEventListener("click", () => setOpponent(true));
     $("load-profile").addEventListener("click", loadProfile);
     $("save-profile").addEventListener("click", saveProfile);
     $("delete-profile").addEventListener("click", deleteProfile);
@@ -342,6 +375,7 @@ async function init() {
     await refreshVault();
     await refreshBotState();
     setInterval(refreshBotState, 5000);
+    setInterval(refreshPlayers, 5000);
     await refreshLogs();
   } catch (error) { showFeedback(error.message, true); }
 }
