@@ -44,8 +44,9 @@
           <label>Minecraft version<input id="mc-version" value="auto" maxlength="20"></label>
           <label>AI thinking level<select id="thinking-level"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
         </div>
-        <div class="actions bot-controls"><button class="button primary" id="connect-bot" type="button">Connect bot</button><button class="button danger" id="disconnect-bot" type="button" disabled>Disconnect</button><span class="hint" id="runtime-status">Bot is disconnected.</span></div>
-        <p class="hint">Connection starts only when you press Connect. The runtime uses offline-mode usernames and your saved server-vault credential for supported /login or /register prompts.</p>
+        <div class="actions bot-controls"><button class="button primary" id="connect-bot" type="button"><span class="button-icon">↗</span> Connect bot</button><button class="button danger" id="disconnect-bot" type="button" disabled>Disconnect</button><span class="hint" id="runtime-status">Bot is disconnected.</span></div>
+        <div class="connection-diagnostic" id="connection-diagnostic" aria-live="polite"><span class="diagnostic-orb"></span><div><strong id="diagnostic-title">Ready to connect</strong><p id="diagnostic-message">Connection diagnostics will appear here after you connect.</p></div></div>
+        <p class="hint">Connection starts only when you press Connect. This server profile uses offline-mode usernames. Premium online-mode servers may require a Microsoft-authenticated account, which this build does not provide. Saved vault credentials are only used for matching server login/register prompts.</p>
       </section>
       <section class="panel section" id="vault">
         <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
