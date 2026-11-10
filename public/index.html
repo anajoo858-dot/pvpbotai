@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131b">
+  <title>PvPBotAI Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
+      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#activity">Activity</a></nav>
+      <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
+    </aside>
+    <main>
+      <header class="topbar"><div><p class="eyebrow">MINECRAFT AUTOMATION WORKSPACE</p><h1>Dashboard</h1></div><span class="status"><i></i> Prototype · Offline</span></header>
+      <section class="hero" id="overview">
+        <div><p class="eyebrow">WELCOME BACK</p><h2>Your control room.</h2><p class="muted">Manage your saved server settings and AI preferences from one place.</p></div>
+        <div class="hero-icon">✦</div>
+      </section>
+      <section class="stats">
+        <article class="panel stat"><span>BOT STATUS</span><strong id="bot-status">Disconnected</strong><small>Connection controls are not enabled yet</small></article>
+        <article class="panel stat"><span>SAVED PROFILES</span><strong id="profile-count">—</strong><small>Private to this browser session</small></article>
+        <article class="panel stat"><span>AI PROVIDER</span><strong>Gemini</strong><small>API key stays server-side</small></article>
+      </section>
+      <section class="panel section" id="profiles">
+        <div class="section-head"><div><p class="eyebrow">CONFIGURATION</p><h2>Load Profile</h2><p class="muted">Choose a saved setup. Loading restores settings only; it will never connect automatically.</p></div><span class="tag">SESSION-PRIVATE</span></div>
+        <div class="profile-row"><div class="profile-icon">⌘</div><div class="profile-info"><strong id="profile-name">Main SMP</strong><small id="profile-meta">Loading profile…</small></div><button class="button primary" id="load-profile">Load profile</button></div>
+        <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+      </section>
+      <section class="panel section" id="settings">
+        <div class="section-head"><div><p class="eyebrow">ACTIVE CONFIGURATION</p><h2>Server settings</h2></div><span class="tag">NOT CONNECTED</span></div>
+        <div class="form-grid">
+          <label>Bot name<input id="bot-name" value="GeminiBot" maxlength="16"></label>
+          <label>Minecraft version<input id="mc-version" value="auto"></label>
+          <label class="wide">Server address<input id="server-host" value="play.example.net"></label>
+          <label>Port<input id="server-port" type="number" min="1" max="65535" value="25565"></label>
+          <label>AI thinking level<select id="thinking-level"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
+        </div>
+        <p class="hint">These are local session settings for now. No bot connection is made by this page.</p>
+      </section>
+      <section class="panel section" id="activity">
+        <div class="section-head"><div><p class="eyebrow">LIVE FEED</p><h2>Activity</h2></div></div>
+        <div class="empty"><span>◌</span><div><strong>Waiting for activity</strong><p class="muted">Events will appear here when the authorized bot runtime is added.</p></div></div>
+      </section>
+      <footer>Built for private, permission-based server testing. Never use automation where the server rules prohibit it.</footer>
+    </main>
+  </div>
+</body>
+</html>
