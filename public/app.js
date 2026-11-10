@@ -239,6 +239,24 @@ function connectLogStream() {
   $("logs-level").addEventListener("change", refreshLogs);
   $("logs-search").addEventListener("input", refreshLogs);
 }
+async function sendConsoleMessage(event) {
+  event?.preventDefault();
+  const input = $("console-message");
+  const button = $("console-send");
+  const message = input.value.trim();
+  if (!message) return;
+  button.disabled = true;
+  try {
+    await api("/api/bot/chat", { method:"POST", body:JSON.stringify({message}) });
+    input.value = "";
+    showFeedback(message.startsWith("/") ? "Command sent to the server." : "Chat message sent.");
+    input.focus();
+  } catch (error) {
+    showFeedback(error.message, true);
+  } finally {
+    await refreshBotState();
+  }
+}
 async function refreshPlayers() {
   try {
     const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), current = select.value;
@@ -273,6 +291,8 @@ async function refreshBotState() {
     $("runtime-status").textContent = state.connected ? "Connected to " + state.serverHost + ":" + state.serverPort : "Bot is " + state.botStatus + ".";
     $("connect-bot").disabled = state.connected;
     $("disconnect-bot").disabled = !state.connected;
+    $("console-send").disabled = !state.connected;
+    $("console-message").disabled = !state.connected;
     updateConnectionDiagnostic(state);
   } catch {}
 }
@@ -420,6 +440,7 @@ async function init() {
     $("connect-bot").addEventListener("click", connectBot);
     $("disconnect-bot").addEventListener("click", disconnectBot);
     $("refresh-players").addEventListener("click", refreshPlayers);
+    $("console-chat-form").addEventListener("submit", sendConsoleMessage);
     $("set-target").addEventListener("click", () => setOpponent(false));
     $("clear-target").addEventListener("click", () => setOpponent(true));
     $("load-profile").addEventListener("click", loadProfile);
