@@ -229,7 +229,7 @@ app.post("/api/profiles/:id/load", requireCsrf, async (req, res) => {
 });
 app.get("/api/profiles/export", async (req, res) => {
   const profiles = await listProfiles(req.session.workspaceId);
-  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
+  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle, aiMode }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle, aiMode })) });
 });
 // The vault API deliberately returns metadata only. Passwords are encrypted at rest
 // with AES-256-GCM and are never sent back to the browser after saving.
