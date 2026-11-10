@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#monitor">Live monitor</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#players">Players</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#monitor">Live monitor</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#inventory">Inventory</a><a href="#players">Players</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -72,6 +72,12 @@
         <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
         <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
         <div class="combat-note"><strong>Combat engine status</strong><span>Mode, style, and AI preference are saved with the profile. Live combat is not active yet.</span></div>
+        <div class="attack-panel">
+          <div class="section-head"><div><p class="eyebrow">DEDICATED ATTACK</p><h3>Use current gear · no game-mode preset</h3><p class="muted">Uses a sword or axe if available; otherwise it can attack unarmed.</p></div><span class="tag" id="attack-status">STOPPED</span></div>
+          <div class="combat-grid"><label>Player<select id="attack-player"><option value="">Choose a player…</option></select></label><label class="target-confirm"><input id="attack-approved" type="checkbox"> This player opted in and PvP is allowed here.</label></div>
+          <div class="actions"><button class="button primary" id="attack-start" type="button">Start Attack</button><button class="button danger" id="attack-stop" type="button" disabled>Stop Attack</button></div>
+          <p class="hint" id="attack-message">Attack remains stopped until you start it manually. It stops if the selected player leaves.</p>
+        </div>
       </section>
       <section class="panel section" id="utilities">
         <div class="section-head"><div><p class="eyebrow">BOT UTILITIES</p><h2>Auto Totem & Wander</h2><p class="muted">These controls apply to the connected bot and reset to enabled when a new bot session starts.</p></div><span class="tag">RUNTIME CONTROLS</span></div>
@@ -80,6 +86,18 @@
           <label class="feature-toggle"><span><strong>Idle Wander</strong><small>Short random movements every 5 seconds. Test in a safe, open area and keep it disabled near hazards.</small></span><input id="feature-wander" type="checkbox" checked></label>
         </div>
         <p class="hint" id="features-status">Connect the bot to change these settings.</p>
+      </section>
+
+      <section class="panel section" id="inventory">
+        <div class="section-head"><div><p class="eyebrow">LIVE PLAYER INVENTORY</p><h2>Inventory</h2><p class="muted">Drag an item onto another slot to move it in Minecraft. Click an item for actions.</p></div><span class="tag" id="inventory-status">WAITING</span></div>
+        <div class="inventory-toolbar"><button class="button secondary" id="inventory-refresh" type="button">Refresh inventory</button><span class="hint">Changes are sent to the connected bot.</span></div>
+        <div class="inventory-grid" id="inventory-grid"><p class="muted">Connect the bot to view its inventory.</p></div>
+        <div class="inventory-menu" id="inventory-menu" hidden><strong id="inventory-menu-title">Item actions</strong><button type="button" data-item-action="offhand">Move to Offhand</button><button type="button" data-item-action="drop">Drop 1</button><button type="button" data-item-action="dropstack">Drop Stack</button><button type="button" id="inventory-menu-close">Close</button></div>
+      </section>
+      <section class="panel section" id="armor">
+        <div class="section-head"><div><p class="eyebrow">EQUIPMENT UTILITY</p><h2>Auto Armor</h2><p class="muted">Equip the best armor currently in inventory.</p></div><span class="tag">MANUAL APPLY</span></div>
+        <label class="feature-toggle"><span><strong>Prefer Elytra</strong><small>When enabled, equip an Elytra in the chest slot. When disabled, prefer the best chestplate.</small></span><input id="armor-elytra" type="checkbox"></label>
+        <div class="actions"><button class="button primary" id="armor-equip" type="button">Equip Best Armor</button><span class="hint" id="armor-status">Waiting for bot.</span></div>
       </section>
       <section class="panel section" id="players">
         <div class="section-head"><div><p class="eyebrow">LIVE SERVER ROSTER</p><h2>Players & leaderboard</h2><p class="muted">Online players visible to the connected bot. This is a live roster, not a stats ranking.</p></div><span class="tag" id="player-count">0 ONLINE</span></div>
