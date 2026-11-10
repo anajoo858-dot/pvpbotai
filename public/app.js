@@ -53,38 +53,34 @@ function renderProfiles() {
   $("load-profile").disabled = profiles.length === 0;
 }
 function selectedProfile() { return profiles.find(p => p.id === $("profile-select").value); }
-async function refreshVaultStatus() {
-  const profile = selectedProfile();
-  const status = $("vault-status");
-  if (!profile) { status.textContent = "Select a profile"; return; }
+function currentBotName() { return $("bot-name").value.trim(); }
+async function refreshVault() {
+  const botName = currentBotName(); $("vault-bot-label").textContent = botName || "No bot selected";
+  const list = $("vault-list"); list.replaceChildren();
+  if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) { $("vault-count").textContent = "Choose a valid bot name"; return; }
   try {
-    const data = await api("/api/vault/" + encodeURIComponent(profile.id));
-    status.textContent = data.configured ? "Password saved securely" : "No password saved";
-    $("vault-format").value = data.registerFormat || "auto";
-  } catch (error) { status.textContent = error.message; }
+    const data = await api("/api/vault?botName=" + encodeURIComponent(botName));
+    $("vault-count").textContent = data.entries.length + " SAVED SERVERS";
+    if (!data.entries.length) { const p=document.createElement("p");p.className="muted";p.textContent="No server credentials saved for this bot yet.";list.append(p);return; }
+    for (const entry of data.entries) {
+      const row=document.createElement("div");row.className="vault-row";
+      const host=document.createElement("span");host.textContent=entry.server_host;
+      const port=document.createElement("span");port.textContent=String(entry.server_port);
+      const masked=document.createElement("span");masked.className="vault-masked";masked.textContent="••••••••";
+      const actions=document.createElement("div");actions.className="vault-actions";
+      const copy=document.createElement("button");copy.className="button secondary";copy.type="button";copy.textContent="Copy";
+      copy.addEventListener("click",async()=>{try{const data=await api("/api/vault/"+encodeURIComponent(entry.id)+"/reveal",{method:"POST",body:"{}"});await navigator.clipboard.writeText(data.password);showFeedback("Password copied for "+entry.server_host+".");}catch(e){showFeedback("Copy failed: "+e.message,true);}});
+      const del=document.createElement("button");del.className="button danger";del.type="button";del.textContent="Delete";
+      del.addEventListener("click",async()=>{if(!window.confirm("Delete credentials for "+entry.server_host+" under "+botName+"?"))return;try{await api("/api/vault/"+encodeURIComponent(entry.id),{method:"DELETE",body:"{}"});await refreshVault();}catch(e){showFeedback(e.message,true);}});
+      actions.append(copy,del);row.append(host,port,masked,actions);list.append(row);
+    }
+  } catch(e) { $("vault-count").textContent=e.message; }
 }
-async function saveVaultPassword() {
-  const profile = selectedProfile();
-  const password = $("vault-password").value;
-  if (!profile) return showFeedback("Select a profile first.", true);
+async function saveVaultEntry() {
   try {
-    const data = await api("/api/vault/" + encodeURIComponent(profile.id), {
-      method: "PUT", body: JSON.stringify({ password, registerFormat: $("vault-format").value })
-    });
-    $("vault-password").value = "";
-    $("vault-status").textContent = "Password saved securely";
-    showFeedback("Vault updated. The password will not be shown again.");
-  } catch (error) { showFeedback(error.message, true); }
-}
-async function deleteVaultPassword() {
-  const profile = selectedProfile();
-  if (!profile || !window.confirm("Remove the saved authentication password for this profile?")) return;
-  try {
-    await api("/api/vault/" + encodeURIComponent(profile.id), { method: "DELETE", body: "{}" });
-    $("vault-password").value = "";
-    $("vault-status").textContent = "No password saved";
-    showFeedback("Saved password removed.");
-  } catch (error) { showFeedback(error.message, true); }
+    await api("/api/vault",{method:"POST",body:JSON.stringify({botName:currentBotName(),serverHost:$("vault-server-host").value.trim(),serverPort:Number($("vault-server-port").value),password:$("vault-password").value})});
+    $("vault-password").value="";showFeedback("Credentials saved to "+currentBotName()+"'s vault.");await refreshVault();
+  } catch(e) { showFeedback(e.message,true); }
 }
 async function loadProfile() {
   const profile = selectedProfile();
