@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -45,6 +45,15 @@
           <label>AI thinking level<select id="thinking-level"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
         </div>
         <p class="hint">Save as new creates a separate profile. No connection or game action is triggered.</p>
+      </section>
+      <section class="panel section" id="vault">
+        <div class="section-head"><div><p class="eyebrow">PRIVATE CREDENTIAL STORAGE</p><h2>Authentication vault</h2><p class="muted">Save a separate server password for the selected bot profile. Passwords are encrypted on the server and never included in exports or logs.</p></div><span class="tag" id="vault-status">Checking…</span></div>
+        <div class="vault-grid">
+          <label>Server authentication password<input id="vault-password" type="password" maxlength="128" autocomplete="new-password" placeholder="Enter password to save or replace"></label>
+          <label>Registration format<select id="vault-format"><option value="auto">Auto-detect when supported</option><option value="single">/register password</option><option value="double">/register password password</option></select></label>
+        </div>
+        <div class="actions"><button class="button primary" id="vault-save" type="button">Save password</button><button class="button danger" id="vault-delete" type="button">Remove password</button></div>
+        <p class="hint">Login uses /login password. Registration format is a per-profile preference. Automatic detection and command sending will work once the Minecraft runtime is connected.</p>
       </section>
       <section class="panel section" id="activity">
         <div class="section-head"><div><p class="eyebrow">LIVE FEED</p><h2>Activity</h2></div></div>
