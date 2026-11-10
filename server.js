@@ -488,6 +488,20 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Target selection does not initiate combat.","combat").catch(()=>{});
   res.json({targetPlayer:player,selected:true});
 });
+app.get("/api/monitor", (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  const bot=runtime?.bot;
+  const ready=!!bot?.entity && ["connected","authenticated"].includes(runtime.status);
+  if(!ready) return res.json({connected:false,worldReady:false});
+  const slots=bot.inventory?.slots || [];
+  const itemName=(item)=>item ? String(item.displayName || item.name || "Unknown").slice(0,48) : "Empty";
+  const offhand=slots[45] || null;
+  const count=slots.reduce((total,item)=>total+(item?.name==="totem_of_undying"?(Number(item.count)||1):0),0);
+  const position=bot.entity.position;
+  const armor=[{slot:"Helmet",item:itemName(slots[8])},{slot:"Chestplate",item:itemName(slots[7])},{slot:"Leggings",item:itemName(slots[6])},{slot:"Boots",item:itemName(slots[5])},{slot:"Main hand",item:itemName(bot.heldItem)},{slot:"Offhand",item:itemName(offhand)}];
+  res.set("Cache-Control","no-store");
+  res.json({connected:true,worldReady:true,health:Number.isFinite(bot.health)?bot.health:null,food:Number.isFinite(bot.food)?bot.food:null,position:position?{x:Number(position.x.toFixed(2)),y:Number(position.y.toFixed(2)),z:Number(position.z.toFixed(2))}:null,dimension:String(bot.game?.dimension || bot.game?.levelType || "Unknown").slice(0,40),totem:{equipped:offhand?.name==="totem_of_undying",offhand:itemName(offhand),total:count,spares:Math.max(0,count-(offhand?.name==="totem_of_undying"?(Number(offhand.count)||1):0))},equipment:armor});
+});
 app.get("/api/state", (req, res) => res.json(botPublicState(activeBots.get(req.session.workspaceId))));
 app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   const profile = await getProfile(req.session.workspaceId, req.body?.profileId);
