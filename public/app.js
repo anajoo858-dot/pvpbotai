@@ -53,6 +53,39 @@ function renderProfiles() {
   $("load-profile").disabled = profiles.length === 0;
 }
 function selectedProfile() { return profiles.find(p => p.id === $("profile-select").value); }
+async function refreshVaultStatus() {
+  const profile = selectedProfile();
+  const status = $("vault-status");
+  if (!profile) { status.textContent = "Select a profile"; return; }
+  try {
+    const data = await api("/api/vault/" + encodeURIComponent(profile.id));
+    status.textContent = data.configured ? "Password saved securely" : "No password saved";
+    $("vault-format").value = data.registerFormat || "auto";
+  } catch (error) { status.textContent = error.message; }
+}
+async function saveVaultPassword() {
+  const profile = selectedProfile();
+  const password = $("vault-password").value;
+  if (!profile) return showFeedback("Select a profile first.", true);
+  try {
+    const data = await api("/api/vault/" + encodeURIComponent(profile.id), {
+      method: "PUT", body: JSON.stringify({ password, registerFormat: $("vault-format").value })
+    });
+    $("vault-password").value = "";
+    $("vault-status").textContent = "Password saved securely";
+    showFeedback("Vault updated. The password will not be shown again.");
+  } catch (error) { showFeedback(error.message, true); }
+}
+async function deleteVaultPassword() {
+  const profile = selectedProfile();
+  if (!profile || !window.confirm("Remove the saved authentication password for this profile?")) return;
+  try {
+    await api("/api/vault/" + encodeURIComponent(profile.id), { method: "DELETE", body: "{}" });
+    $("vault-password").value = "";
+    $("vault-status").textContent = "No password saved";
+    showFeedback("Saved password removed.");
+  } catch (error) { showFeedback(error.message, true); }
+}
 async function loadProfile() {
   const profile = selectedProfile();
   if (!profile) return;
