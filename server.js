@@ -356,6 +356,52 @@ async function sendVaultAuth(runtime, mode) {
     return false;
   }
 }
+
+function stopCombat(runtime) {
+  if (runtime?.combatTimer) clearInterval(runtime.combatTimer);
+  if (runtime) runtime.combatTimer=null;
+  try { runtime?.bot?.pvp?.stop(); } catch {}
+  if(runtime) runtime.combatActive=false;
+}
+function findPlayerEntity(runtime,name) {
+  const player=Object.values(runtime?.bot?.players||{}).find(p=>p?.username?.toLowerCase()===String(name||"").toLowerCase());
+  return player?.entity || null;
+}
+async function startCombat(runtime) {
+  if(!runtime?.bot?.pvp) throw new Error("Combat plugin is not available. Reconnect after deployment.");
+  if(!runtime.targetPlayer) throw new Error("Choose an approved player first.");
+  if(runtime.combatActive) return;
+  runtime.combatActive=true;
+  runtime.combatTimer=setInterval(async()=>{
+    try {
+      if(!runtime.bot?.entity || !["connected","authenticated"].includes(runtime.status)){stopCombat(runtime);return;}
+      const target=findPlayerEntity(runtime,runtime.targetPlayer);
+      if(!target){stopCombat(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Attack stopped: selected player is no longer visible.","combat").catch(()=>{});return;}
+      const inventory=runtime.bot.inventory?.items?.()||[];
+      const weapon=inventory.filter(i=>/(sword|axe)$/.test(i.name)).sort((a,b)=>{
+        const score=n=>n.includes("netherite")?6:n.includes("diamond")?5:n.includes("iron")?4:n.includes("stone")?3:n.includes("golden")?2:n.includes("wooden")?1:0;
+        return score(b.name)-score(a.name);
+      })[0];
+      if(weapon && runtime.bot.heldItem?.type!==weapon.type) await runtime.bot.equip(weapon,"hand");
+      runtime.bot.pvp.attack(target);
+    } catch(error) {
+      stopCombat(runtime);
+      writeWorkspaceLog(runtime.workspaceId,"WARN","Attack stopped: "+String(error?.message||error).slice(0,240),"combat").catch(()=>{});
+    }
+  },700);
+}
+async function equipBestArmor(runtime,useElytra) {
+  const bot=runtime?.bot;if(!bot?.entity)throw new Error("Wait until the bot has spawned.");
+  const items=bot.inventory?.items?.()||[];
+  const rank=n=>n.includes("netherite")?6:n.includes("diamond")?5:n.includes("iron")?4:n.includes("chainmail")?3:n.includes("golden")?2:n.includes("leather")?1:0;
+  const choose=(pattern)=>items.filter(i=>pattern.test(i.name)).sort((a,b)=>rank(b.name)-rank(a.name))[0];
+  for(const [pattern,dest] of [[/_(helmet)$/,"head"],[/_(leggings)$/,"legs"],[/_(boots)$/,"feet"]]){
+    const item=choose(pattern);if(item)await bot.equip(item,dest);
+  }
+  const chest=useElytra?items.find(i=>i.name==="elytra"):choose(/_(chestplate)$/);
+  if(chest)await bot.equip(chest,"torso");
+}
+
 function startAutoTotem(runtime) {
   if (!runtime?.bot || !runtime.autoTotemEnabled || runtime.autoTotemTimer) return;
   runtime.autoTotemBusy = false;
@@ -488,6 +534,58 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Target selection does not initiate combat.","combat").catch(()=>{});
   res.json({targetPlayer:player,selected:true});
 });
+
+app.post("/api/combat/start",requireCsrf,async(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect and spawn the bot first."});
+  const player=cleanText(req.body?.player,16);
+  if(!player||player.toLowerCase()!==String(runtime.targetPlayer||"").toLowerCase())return res.status(400).json({error:"Select and confirm the opted-in player in Players first."});
+  if(req.body?.approved!==true)return res.status(400).json({error:"Confirm this player opted in and the server permits PvP."});
+  try{await startCombat(runtime);await writeWorkspaceLog(runtime.workspaceId,"INFO","Dedicated Attack started against approved player "+player+".","combat");res.json({active:true,targetPlayer:player});}
+  catch(error){res.status(409).json({error:error.message});}
+});
+app.post("/api/combat/stop",requireCsrf,(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);stopCombat(runtime);
+  if(runtime)writeWorkspaceLog(runtime.workspaceId,"INFO","Dedicated Attack stopped from dashboard.","combat").catch(()=>{});
+  res.json({active:false});
+});
+app.get("/api/inventory",(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId),bot=runtime?.bot;
+  if(!bot?.entity||!["connected","authenticated"].includes(runtime.status))return res.json({connected:false,items:[]});
+  const slots=bot.inventory?.slots||[];
+  res.set("Cache-Control","no-store");
+  res.json({connected:true,items:slots.map((item,slot)=>({slot,item:item?{name:item.name,displayName:String(item.displayName||item.name).slice(0,48),count:item.count,type:item.type}:null})).filter(x=>x.slot>=9&&x.slot<=45)});
+});
+app.post("/api/inventory/move",requireCsrf,async(req,res)=>{
+  const bot=activeBots.get(req.session.workspaceId)?.bot;
+  if(!bot?.entity)return res.status(409).json({error:"Connect and spawn the bot first."});
+  const from=Number(req.body?.from),to=Number(req.body?.to);
+  if(!Number.isInteger(from)||!Number.isInteger(to)||from<9||from>45||to<9||to>45||from===to)return res.status(400).json({error:"Choose two valid inventory slots."});
+  try{await bot.moveSlotItem(from,to);res.json({moved:true});}
+  catch(error){res.status(409).json({error:"Minecraft could not move that item: "+String(error?.message||error).slice(0,180)});}
+});
+app.post("/api/inventory/action",requireCsrf,async(req,res)=>{
+  const bot=activeBots.get(req.session.workspaceId)?.bot;
+  if(!bot?.entity)return res.status(409).json({error:"Connect and spawn the bot first."});
+  const slot=Number(req.body?.slot),action=String(req.body?.action||"");
+  if(!Number.isInteger(slot)||slot<9||slot>45)return res.status(400).json({error:"Invalid inventory slot."});
+  const item=bot.inventory?.slots?.[slot];if(!item)return res.status(404).json({error:"That slot is empty."});
+  try{
+    if(action==="offhand")await bot.equip(item,"off-hand");
+    else if(action==="drop")await bot.toss(item.type,null,1);
+    else if(action==="dropstack")await bot.tossStack(item);
+    else return res.status(400).json({error:"Unknown item action."});
+    res.json({success:true});
+  }catch(error){res.status(409).json({error:"Minecraft rejected the inventory action: "+String(error?.message||error).slice(0,180)});}
+});
+app.post("/api/armor",requireCsrf,async(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot?.entity)return res.status(409).json({error:"Connect and spawn the bot first."});
+  if(typeof req.body?.useElytra==="boolean")runtime.useElytra=req.body.useElytra;
+  try{await equipBestArmor(runtime,runtime.useElytra);res.json({success:true,useElytra:runtime.useElytra});}
+  catch(error){res.status(409).json({error:"Could not equip armor: "+String(error?.message||error).slice(0,180)});}
+});
+
 app.get("/api/monitor", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   const bot=runtime?.bot;
@@ -519,12 +617,13 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   try { mineflayer = require("mineflayer"); }
   catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
   const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
-    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true };
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,combatActive:false,combatTimer:null,useElytra:false };
   activeBots.set(req.session.workspaceId,runtime);
   try {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
     if (profile.minecraftVersion && profile.minecraftVersion !== "auto") options.version = profile.minecraftVersion;
     runtime.bot = mineflayer.createBot(options);
+    try { const pvp = require("mineflayer-pvp"); runtime.bot.loadPlugin(pvp.plugin || pvp); } catch(error) { writeWorkspaceLog(runtime.workspaceId,"WARN","PvP plugin could not load: "+String(error?.message||error).slice(0,240),"combat").catch(()=>{}); }
     runtime.connectTimer = setTimeout(() => {
       if (runtime.status === "connecting") {
         runtime.status = "failed";
@@ -572,6 +671,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
     });
     runtime.bot.on("end",()=>{
+      stopCombat(runtime);
       stopAutoTotem(runtime);
       stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
@@ -590,6 +690,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
+  stopCombat(runtime);
   stopAutoTotem(runtime);
   stopIdleWander(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
