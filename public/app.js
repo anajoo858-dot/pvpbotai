@@ -99,6 +99,53 @@ async function exportProfiles() {
     showFeedback("Profile export downloaded. It contains no API keys.");
   } catch (error) { showFeedback(error.message, true); }
 }
+const seenLogIds = new Set();
+function logTime(value) { return new Date(value).toLocaleTimeString(); }
+function appendConsoleEntry(entry) {
+  if (seenLogIds.has(entry.id)) return;
+  seenLogIds.add(entry.id);
+  const line = document.createElement("div");
+  line.className = "terminal-line";
+  const time = document.createElement("span"); time.className = "log-time"; time.textContent = logTime(entry.created_at);
+  const level = document.createElement("span"); level.className = "level level-" + entry.level.toLowerCase(); level.textContent = entry.level;
+  const source = document.createElement("span"); source.className = "log-source"; source.textContent = "[" + entry.source + "]";
+  const message = document.createElement("span"); message.className = "log-message"; message.textContent = entry.message;
+  line.append(time, level, source, message);
+  const output = $("console-output"); output.append(line);
+  while (output.children.length > 150) output.firstElementChild.remove();
+  output.scrollTop = output.scrollHeight;
+  $("logs-count").textContent = seenLogIds.size + " EVENTS";
+}
+async function refreshLogs() {
+  try {
+    const params = new URLSearchParams();
+    if ($("logs-level").value) params.set("level", $("logs-level").value);
+    if ($("logs-search").value.trim()) params.set("q", $("logs-search").value.trim());
+    const data = await api("/api/logs?" + params.toString());
+    const list = $("logs-list"); list.replaceChildren();
+    $("logs-count").textContent = data.logs.length + " MATCHING";
+    if (!data.logs.length) { const empty = document.createElement("p"); empty.className = "muted"; empty.textContent = "No matching log entries."; list.append(empty); return; }
+    for (const entry of data.logs) {
+      const row = document.createElement("div"); row.className = "log-row";
+      const time = document.createElement("time"); time.className = "log-time"; time.textContent = new Date(entry.created_at).toLocaleString();
+      const level = document.createElement("span"); level.className = "level level-" + entry.level.toLowerCase(); level.textContent = entry.level;
+      const source = document.createElement("span"); source.className = "log-source"; source.textContent = entry.source;
+      const message = document.createElement("span"); message.className = "log-message"; message.textContent = entry.message;
+      row.append(time, level, source, message); list.append(row);
+      appendConsoleEntry(entry);
+    }
+  } catch (error) { showFeedback("Could not load logs: " + error.message, true); }
+}
+function connectLogStream() {
+  const stream = new EventSource("/api/logs/stream");
+  stream.addEventListener("open", () => { $("console-connection").textContent = "STREAM LIVE"; });
+  stream.addEventListener("log", event => { try { appendConsoleEntry(JSON.parse(event.data)); } catch {} });
+  stream.addEventListener("error", () => { $("console-connection").textContent = "RECONNECTING"; });
+  $("clear-console").addEventListener("click", () => { $("console-output").replaceChildren(); seenLogIds.clear(); });
+  $("refresh-logs").addEventListener("click", refreshLogs);
+  $("logs-level").addEventListener("change", refreshLogs);
+  $("logs-search").addEventListener("input", refreshLogs);
+}
 async function init() {
   try {
     const data = await api("/api/bootstrap");
@@ -117,6 +164,8 @@ async function init() {
     $("save-profile").addEventListener("click", saveProfile);
     $("delete-profile").addEventListener("click", deleteProfile);
     $("export-profiles").addEventListener("click", exportProfiles);
+    connectLogStream();
+    await refreshLogs();
   } catch (error) { showFeedback(error.message, true); }
 }
 init();
