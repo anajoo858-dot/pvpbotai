@@ -16,7 +16,7 @@
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
-      <header class="topbar"><div><p class="eyebrow">MINECRAFT AUTOMATION WORKSPACE</p><h1>Dashboard</h1></div><span class="status"><i></i> Prototype · Offline</span></header>
+      <header class="topbar"><div><p class="eyebrow">MINECRAFT AUTOMATION WORKSPACE</p><h1>Dashboard</h1></div><span class="status"><i></i> Runtime · Manual connect</span></header>
       <section class="hero" id="overview">
         <div><p class="eyebrow">WELCOME BACK</p><h2>Your control room.</h2><p class="muted">Manage saved server configurations and AI preferences in one place.</p></div>
         <div class="hero-icon">✦</div>
@@ -44,7 +44,8 @@
           <label>Minecraft version<input id="mc-version" value="auto" maxlength="20"></label>
           <label>AI thinking level<select id="thinking-level"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
         </div>
-        <p class="hint">Save as new creates a separate profile. No connection or game action is triggered.</p>
+        <div class="actions bot-controls"><button class="button primary" id="connect-bot" type="button">Connect bot</button><button class="button danger" id="disconnect-bot" type="button" disabled>Disconnect</button><span class="hint" id="runtime-status">Bot is disconnected.</span></div>
+        <p class="hint">Connection starts only when you press Connect. The runtime uses offline-mode usernames and your saved server-vault credential for supported /login or /register prompts.</p>
       </section>
       <section class="panel section" id="vault">
         <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
@@ -58,24 +59,24 @@
         <div class="vault-table-head"><span>Server IP</span><span>Port</span><span>Password entered</span><span>Actions</span></div>
         <div class="vault-list" id="vault-list"><p class="muted">Choose a bot name to view its saved servers.</p></div>
         <div class="actions"><button class="button secondary" id="vault-refresh" type="button">Refresh vault</button></div>
-        <p class="hint">Passwords are encrypted in PostgreSQL. Copy reveals a password only after you click it. Automatic saving after successful authentication will be connected when the Minecraft runtime is added.</p>
+        <p class="hint">Passwords are encrypted in PostgreSQL. Copy reveals a password only after you click it. Save the server password here once. When the bot detects a matching login or registration prompt, it sends the saved command automatically on this server.</p>
       </section>
       <section class="panel section" id="activity">
         <div class="section-head"><div><p class="eyebrow">LIVE FEED</p><h2>Activity</h2></div></div>
-        <div class="empty"><span>◌</span><div><strong>Waiting for activity</strong><p class="muted">Events appear here when an authorized runtime is added.</p></div></div>
+        <div class="empty"><span>◌</span><div><strong>Waiting for activity</strong><p class="muted">Connection, authentication, and runtime events appear here.</p></div></div>
       </section>
       <section class="panel section" id="console">
         <div class="section-head"><div><p class="eyebrow">RUNTIME OUTPUT</p><h2>Live console</h2><p class="muted">Real-time output from your private bot workspace.</p></div><span class="tag" id="console-connection">STREAM CONNECTING</span></div>
         <div class="console-toolbar"><span><i class="console-dot"></i> LIVE STREAM</span><button class="button secondary" id="clear-console" type="button">Clear view</button></div>
         <div class="terminal" id="console-output" role="log" aria-live="polite"><div class="terminal-line muted">Waiting for workspace events…</div></div>
-        <p class="hint">Read-only console. Bot commands are not enabled in this prototype.</p>
+        <p class="hint">Read-only console. Authentication commands are sent only in response to detected server prompts.</p>
       </section>
       <section class="panel section" id="logs">
         <div class="section-head"><div><p class="eyebrow">PERSISTENT HISTORY</p><h2>Logs</h2><p class="muted">Saved events for this browser session, newest entries at the bottom.</p></div><span class="tag" id="logs-count">0 EVENTS</span></div>
         <div class="logs-toolbar"><input id="logs-search" type="search" placeholder="Search messages or source…" aria-label="Search logs"><select id="logs-level" aria-label="Filter log level"><option value="">All levels</option><option>INFO</option><option>WARN</option><option>ERROR</option><option>DEBUG</option></select><button class="button secondary" id="refresh-logs" type="button">Refresh</button></div>
         <div class="logs-list" id="logs-list"><div class="empty"><span>◌</span><div><strong>No log entries yet</strong><p class="muted">New runtime and system events will appear here.</p></div></div></div>
       </section>
-      <footer>Use automation only where you have permission and the server rules allow it. This prototype does not connect to Minecraft.</footer>
+      <footer>Use automation only where you have permission and the server rules allow it. Connect only to servers where you have permission and where bots are allowed.</footer>
     </main>
   </div>
 </body>
