@@ -127,3 +127,12 @@ input:focus,select:focus{border-color:rgba(255,255,255,.72);background:rgba(0,0,
 .target-confirm{display:flex;align-items:center;gap:10px}
 .target-confirm input{width:auto;accent-color:#fff}
 @media(max-width:600px){.player-toolbar{align-items:flex-start;flex-direction:column}.player-list{grid-template-columns:1fr}}
+
+
+/* Runtime utility controls */
+.feature-toggle{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 20px;border:1px solid rgba(220,230,255,.13);border-radius:18px;background:rgba(255,255,255,.045);backdrop-filter:blur(18px);min-width:0}
+.feature-toggle span{display:grid;gap:7px}
+.feature-toggle strong{font-size:15px;color:#f4f6ff}
+.feature-toggle small{font-size:12px;line-height:1.55;color:#aab3c9;max-width:520px}
+.feature-toggle input{width:21px;height:21px;accent-color:#dce6ff;flex:0 0 auto;cursor:pointer}
+.feature-toggle input:disabled{opacity:.4;cursor:not-allowed}
