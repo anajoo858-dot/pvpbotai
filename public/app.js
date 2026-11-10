@@ -175,6 +175,31 @@ function connectLogStream() {
   $("logs-level").addEventListener("change", refreshLogs);
   $("logs-search").addEventListener("input", refreshLogs);
 }
+async function refreshBotState() {
+  try {
+    const state = await api("/api/state");
+    $("bot-status").textContent = state.botStatus;
+    $("runtime-status").textContent = state.connected ? "Connected to " + state.serverHost + ":" + state.serverPort : "Bot is " + state.botStatus + ".";
+    $("connect-bot").disabled = state.connected;
+    $("disconnect-bot").disabled = !state.connected;
+  } catch {}
+}
+async function connectBot() {
+  const profile = selectedProfile();
+  if (!profile) return showFeedback("Select a saved profile first.", true);
+  try {
+    const result = await api("/api/bot/connect", { method:"POST", body:JSON.stringify({profileId:profile.id}) });
+    showFeedback(result.message);
+    await refreshBotState();
+  } catch(error) { showFeedback(error.message,true); }
+}
+async function disconnectBot() {
+  try {
+    await api("/api/bot/disconnect", { method:"POST", body:"{}" });
+    showFeedback("Bot disconnected.");
+    await refreshBotState();
+  } catch(error) { showFeedback(error.message,true); }
+}
 async function init() {
   try {
     const data = await api("/api/bootstrap");
@@ -193,6 +218,8 @@ async function init() {
     $("bot-name").addEventListener("change", refreshVault);
     $("vault-save").addEventListener("click", saveVaultEntry);
     $("vault-refresh").addEventListener("click", refreshVault);
+    $("connect-bot").addEventListener("click", connectBot);
+    $("disconnect-bot").addEventListener("click", disconnectBot);
     $("load-profile").addEventListener("click", loadProfile);
     $("save-profile").addEventListener("click", saveProfile);
     $("delete-profile").addEventListener("click", deleteProfile);
