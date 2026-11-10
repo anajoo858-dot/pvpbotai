@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#players">Players</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#monitor">Live monitor</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#players">Players</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -25,6 +25,17 @@
         <article class="panel stat"><span>BOT STATUS</span><strong id="bot-status">Disconnected</strong><small>No Minecraft connection is active</small></article>
         <article class="panel stat"><span>SAVED PROFILES</span><strong id="profile-count">—</strong><small>Private to this browser session</small></article>
         <article class="panel stat"><span>AI PROVIDER</span><strong>Gemini</strong><small>API key belongs on the server only</small></article>
+      </section>
+      <section class="panel section monitor-section" id="monitor">
+        <div class="section-head"><div><p class="eyebrow">LIVE TELEMETRY</p><h2>Bot monitor</h2><p class="muted">Live health, hunger, coordinates, totems, and equipped gear.</p></div><span class="tag" id="monitor-status">WAITING FOR BOT</span></div>
+        <div class="monitor-grid">
+          <article class="monitor-card"><span>HEALTH</span><strong id="monitor-health">—</strong><div class="meter"><i id="health-meter"></i></div></article>
+          <article class="monitor-card"><span>HUNGER</span><strong id="monitor-food">—</strong><div class="meter"><i id="food-meter"></i></div></article>
+          <article class="monitor-card"><span>TOTEMS CARRIED</span><strong id="monitor-totems">—</strong><small id="monitor-totem-detail">Offhand: —</small></article>
+          <article class="monitor-card"><span>LOCATION · X / Y / Z</span><strong class="coordinates" id="monitor-coords">—</strong><small id="monitor-dimension">Dimension: —</small></article>
+        </div>
+        <div class="equipment-panel"><div class="equipment-heading">EQUIPMENT</div><div class="equipment-grid" id="monitor-equipment"><span class="muted">Connect the bot to view equipment.</span></div></div>
+        <p class="monitor-updated" id="monitor-updated">Waiting for world data…</p>
       </section>
       <section class="panel section" id="profiles">
         <div class="section-head"><div><p class="eyebrow">CONFIGURATION</p><h2>Profile manager</h2><p class="muted">Profiles are isolated by browser session. Loading one never starts a bot.</p></div><span class="tag">SESSION-PRIVATE</span></div>
