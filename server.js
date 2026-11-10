@@ -345,7 +345,7 @@ async function sendVaultAuth(runtime, mode) {
   const command = mode === "login" ? "/login " + runtime.password :
     mode === "register-double" ? "/register " + runtime.password + " " + runtime.password :
     "/register " + runtime.password;
-  runtime.authAttempts += 1; runtime.authStatus = "authenticating"; runtime.status = "authenticating";
+  runtime.authAttempts += 1; runtime.authStatus = "authenticating";
   try {
     runtime.bot.chat(command);
     await writeWorkspaceLog(runtime.workspaceId, "INFO", "Sent saved server authentication command. Password hidden.", "auth");
@@ -446,9 +446,33 @@ app.post("/api/features", requireCsrf, (req,res) => {
   }
   res.json({autoTotem:runtime.autoTotemEnabled,wander:runtime.wanderEnabled});
 });
+app.post("/api/bot/chat", requireCsrf, async (req,res) => {
+  const runtime = activeBots.get(req.session.workspaceId);
+  if (!runtime?.bot || !["connected","authenticating","authenticated"].includes(runtime.status)) {
+    return res.status(409).json({ error: "The bot must be connected and in the server before sending chat." });
+  }
+  const message = cleanText(req.body?.message, 256).replace(/[\u0000-\u001f\u007f]/g, "");
+  if (!message) return res.status(400).json({ error: "Type a chat message or command first." });
+  if (message.startsWith("/")) {
+    const command = message.slice(1).trim().split(/\s+/, 1)[0].toLowerCase();
+    const allowedCommands = new Set(["help","list","msg","tell","w","r","reply","me","spawn","home","warp","tpa","tpaccept","back","rules","bal","balance","kit","trade","party","accept","deny","ignore","server","lobby"]);
+    if (!allowedCommands.has(command)) {
+      return res.status(400).json({ error: "That command is not enabled in the dashboard. Only common player utility commands are allowed; authentication commands use the secure vault." });
+    }
+  }
+  try {
+    runtime.bot.chat(message);
+    await writeWorkspaceLog(runtime.workspaceId, "INFO", message.startsWith("/") ? "Sent an allowed server command from the console." : "Sent a chat message from the console.", "chat");
+    res.json({ sent: true });
+  } catch (error) {
+    const detail = String(error?.message || error).replace(/[\r\n]+/g," ").slice(0,180);
+    await writeWorkspaceLog(runtime.workspaceId, "ERROR", "Could not send console chat: " + detail, "chat");
+    res.status(502).json({ error: "Could not send the message. Check that the bot is still connected." });
+  }
+});
 app.get("/api/players", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
-  const connected=!!runtime?.bot&&["connected","authenticated"].includes(runtime.status);
+  const connected=!!runtime?.bot&&["connected","authenticating","authenticated"].includes(runtime.status);
   const players=connected?Object.values(runtime.bot.players||{}).filter(p=>p?.username&&p.username!==runtime.botName).map(p=>({username:String(p.username).slice(0,16),ping:Number.isFinite(p.ping)?p.ping:null})).sort((x,y)=>x.username.localeCompare(y.username)):[];
   res.set("Cache-Control","no-store");res.json({connected,players,targetPlayer:runtime?.targetPlayer||null});
 });
