@@ -83,3 +83,36 @@ select.glass-native{position:absolute!important;width:1px!important;height:1px!i
 ::selection{background:rgba(159,148,255,.35);color:#fff}
 @media(max-width:760px){.shell{gap:12px}.hero{border-radius:22px}.panel{border-radius:19px}.section-head{flex-wrap:wrap}.glass-select-menu{max-height:210px}.connection-diagnostic{padding:12px}.vault-table-head{display:none}.vault-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.vault-row>*:nth-child(3){grid-column:1}.vault-row>*:nth-child(4){grid-column:2;grid-row:1/3}.log-row{grid-template-columns:1fr auto;gap:6px}.log-row .log-message{grid-column:1/-1}.log-row .log-source{grid-column:1}.logs-toolbar{flex-wrap:wrap}.logs-toolbar input{flex-basis:100%}}
 @media(prefers-reduced-motion:reduce){body:before,body:after,.hero-icon,.stat{animation:none!important}*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important}}
+
+/* Monochrome liquid-glass edition */
+:root{--line:rgba(255,255,255,.17);--text:#fafafa;--muted:#a5a5a5;--purple:#f1f1f1;--cyan:#fff;--green:#e8e8e8;--shadow:0 28px 90px rgba(0,0,0,.72)}
+body{background:radial-gradient(ellipse at 18% 0%,rgba(255,255,255,.09),transparent 35%),radial-gradient(ellipse at 90% 85%,rgba(255,255,255,.055),transparent 30%),linear-gradient(145deg,#020202,#090909 52%,#000);background-attachment:fixed}
+body:before,body:after{background:#fff;opacity:.055;filter:blur(115px)}
+.sidebar,.panel,.hero{background:linear-gradient(145deg,rgba(255,255,255,.105),rgba(255,255,255,.025) 48%,rgba(255,255,255,.055));border-color:rgba(255,255,255,.18);backdrop-filter:blur(36px) saturate(125%);-webkit-backdrop-filter:blur(36px) saturate(125%);box-shadow:0 25px 80px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.18),inset 0 -1px 0 rgba(255,255,255,.035)}
+.brand-mark{background:linear-gradient(145deg,#fff,#a7a7a7 55%,#555);color:#050505;box-shadow:0 8px 30px rgba(255,255,255,.15)}
+.eyebrow{color:#d8d8d8}
+nav a.active{color:#fff;background:linear-gradient(110deg,rgba(255,255,255,.17),rgba(255,255,255,.045));border-color:rgba(255,255,255,.2);box-shadow:inset 0 1px rgba(255,255,255,.16),0 8px 28px rgba(0,0,0,.2)}
+nav a.active:before{background:#fff;box-shadow:0 0 15px rgba(255,255,255,.75)}
+.status,.tag{background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.17);color:#e8e8e8}
+.hero{background:radial-gradient(circle at 85% 12%,rgba(255,255,255,.12),transparent 34%),linear-gradient(115deg,rgba(255,255,255,.095),rgba(255,255,255,.025))}
+.hero-icon{color:#fff;text-shadow:0 0 48px rgba(255,255,255,.55)}
+.primary{background:linear-gradient(145deg,#fff,#c9c9c9 55%,#929292);color:#050505;box-shadow:0 9px 30px rgba(255,255,255,.12)}
+.primary:hover{box-shadow:0 12px 34px rgba(255,255,255,.2)}
+.secondary{background:rgba(255,255,255,.075);border-color:rgba(255,255,255,.2);color:#fff}
+.secondary:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.42)}
+.danger{background:rgba(255,255,255,.055);color:#eee;border-color:rgba(255,255,255,.2)}
+input,select{background:rgba(0,0,0,.48);border-color:rgba(255,255,255,.16)}
+input:focus,select:focus{border-color:rgba(255,255,255,.72);background:rgba(0,0,0,.72);box-shadow:0 0 0 4px rgba(255,255,255,.09)}
+.feedback{color:#eee}
+.level-info,.level-warn,.level-error,.level-debug{background:rgba(255,255,255,.09);color:#eee}
+.log-source{color:#e5e5e5}
+.combat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.combat-grid label{display:grid;gap:8px;color:#eee;font-size:13px;font-weight:700}
+.combat-grid small{color:#999;font-size:11px;font-weight:400}
+.combat-note{display:flex;flex-direction:column;gap:5px;margin-top:18px;padding:15px 17px;border:1px solid rgba(255,255,255,.13);border-radius:15px;background:rgba(255,255,255,.035);color:#aaa;font-size:11px}
+.combat-note strong{color:#f5f5f5;font-size:12px}
+.glass-select-trigger{background:linear-gradient(145deg,rgba(255,255,255,.105),rgba(255,255,255,.035));border-color:rgba(255,255,255,.2);box-shadow:inset 0 1px rgba(255,255,255,.12),0 8px 28px rgba(0,0,0,.2);color:#fff;backdrop-filter:blur(24px)}
+.glass-select-menu{background:rgba(15,15,15,.92);border-color:rgba(255,255,255,.2);box-shadow:0 24px 65px rgba(0,0,0,.75),inset 0 1px rgba(255,255,255,.12);backdrop-filter:blur(34px)}
+.glass-option{color:#eee}
+.glass-option:hover,.glass-option[aria-selected=true]{background:rgba(255,255,255,.13);color:#fff}
+@media(max-width:680px){.combat-grid{grid-template-columns:1fr}}
