@@ -15,3 +15,6 @@ nav{grid-template-columns:1fr}
 .log-row{display:grid;grid-template-columns:150px 52px 90px minmax(0,1fr);gap:10px;align-items:start;padding:10px;background:#111722;border:1px solid #252d3b;border-radius:8px;font-size:11px}
 .log-row .log-time{font-size:10px}.log-row .log-message{overflow-wrap:anywhere}
 @media(max-width:760px){nav{grid-template-columns:repeat(5,minmax(0,1fr))}.log-row{grid-template-columns:1fr auto}.log-row .log-message{grid-column:1/-1}.terminal-line{flex-wrap:wrap;gap:5px}.logs-toolbar{flex-wrap:wrap}.logs-toolbar input{flex-basis:100%}}
+.vault-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:20px 0}
+.vault-grid label{display:grid;gap:7px;color:var(--muted);font-size:12px}
+@media(max-width:760px){.vault-grid{grid-template-columns:1fr}}
