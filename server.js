@@ -392,6 +392,41 @@ function stopAutoTotem(runtime) {
   if (runtime?.autoTotemTimer) clearInterval(runtime.autoTotemTimer);
   if (runtime) runtime.autoTotemTimer = null;
 }
+function stopIdleWander(runtime) {
+  if (runtime?.wanderTimer) clearInterval(runtime.wanderTimer);
+  if (runtime?.wanderMoveTimer) clearTimeout(runtime.wanderMoveTimer);
+  if (runtime) {
+    runtime.wanderTimer = null;
+    runtime.wanderMoveTimer = null;
+    for (const control of ["forward","back","left","right","sprint","jump"]) {
+      try { runtime.bot?.setControlState(control,false); } catch {}
+    }
+  }
+}
+function startIdleWander(runtime) {
+  if (!runtime?.bot || runtime.wanderTimer) return;
+  runtime.wanderTimer = setInterval(() => {
+    const bot = runtime.bot;
+    if (!bot || !["connected","authenticated"].includes(runtime.status) || runtime.wanderMoveTimer) return;
+    const yaw = Math.random() * Math.PI * 2 - Math.PI;
+    const strafe = Math.random() < 0.5 ? "left" : "right";
+    const duration = 650 + Math.floor(Math.random() * 650);
+    try {
+      bot.setControlState("forward", true);
+      bot.setControlState(strafe, Math.random() < 0.55);
+      bot.look(yaw, 0, true).catch(() => {});
+      runtime.wanderMoveTimer = setTimeout(() => {
+        for (const control of ["forward","left","right"]) {
+          try { bot.setControlState(control,false); } catch {}
+        }
+        runtime.wanderMoveTimer = null;
+      }, duration);
+    } catch (error) {
+      writeWorkspaceLog(runtime.workspaceId,"WARN","Idle wander paused: "+String(error?.message||error).slice(0,180),"movement").catch(()=>{});
+    }
+  }, 5000);
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Idle wandering enabled: short random movements every 5 seconds.","movement").catch(()=>{});
+}
 app.get("/api/players", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   const connected=!!runtime?.bot&&["connected","authenticated"].includes(runtime.status);
@@ -446,7 +481,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       runtime.status="connected";runtime.lastError=null;
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
-    runtime.bot.on("spawn",()=>{runtime.status="connected";startAutoTotem(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem inventory monitor is active.","bot").catch(()=>{});});
+    runtime.bot.on("spawn",()=>{runtime.status="connected";startAutoTotem(runtime);startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering are active.","bot").catch(()=>{});});
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
@@ -481,6 +516,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
     });
     runtime.bot.on("end",()=>{
       stopAutoTotem(runtime);
+      stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
       if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
       runtime.authStatus="unknown";
@@ -498,6 +534,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
   stopAutoTotem(runtime);
+  stopIdleWander(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
   runtime.status="disconnected";runtime.authStatus="unknown";activeBots.delete(req.session.workspaceId);
   await writeWorkspaceLog(req.session.workspaceId,"INFO","Bot disconnected from the dashboard.","bot");
