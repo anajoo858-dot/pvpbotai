@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#players">Players</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -59,6 +59,17 @@
           </select><small>Sets the preferred risk and decision-making approach.</small></label>
         </div>
         <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
+        <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
+        <div class="combat-note"><strong>Combat engine status</strong><span>Mode, style, and AI preference are saved with the profile. Live combat is not active yet.</span></div>
+      </section>
+      <section class="panel section" id="players">
+        <div class="section-head"><div><p class="eyebrow">LIVE SERVER ROSTER</p><h2>Players & leaderboard</h2><p class="muted">Online players visible to the connected bot. This is a live roster, not a stats ranking.</p></div><span class="tag" id="player-count">0 ONLINE</span></div>
+        <div class="player-toolbar"><span class="hint" id="players-status">Connect the bot to view players.</span><button class="button secondary" id="refresh-players" type="button">Refresh</button></div>
+        <div class="player-list" id="player-list"><p class="muted">No server roster available.</p></div>
+        <div class="target-panel"><h3>Opponent selection</h3><div class="combat-grid"><label>Target player<select id="target-player"><option value="">Choose an online player…</option></select></label><label class="target-confirm"><input id="target-approved" type="checkbox"> I confirm this player opted in / is in an approved arena.</label></div>
+          <div class="actions"><button class="button primary" id="set-target" type="button" disabled>Set opponent</button><button class="button secondary" id="clear-target" type="button">Clear target</button><span class="hint" id="target-status">No opponent selected.</span></div>
+          <p class="hint">Selecting a target does not start combat. Only use against opted-in players where server rules permit it. Auto-targeting is disabled.</p>
+        </div>
       </section>
       <section class="panel section" id="vault">
         <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
