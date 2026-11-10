@@ -10,7 +10,7 @@ A session-isolated Minecraft dashboard prototype with PostgreSQL persistence.
 - Profile validation and a 20-profile per-session limit.
 - CSRF checks, rate limiting, Helmet security headers, and HTTP-only cookies.
 - Profile exports use an explicit allowlist; API keys and secrets are never exported.
-- Loading a profile only restores settings. It does not connect to Minecraft or start automation.
+- Loading a profile only restores settings. Connecting is a separate manual action.
 
 ## Setup
 1. Provision a **persistent PostgreSQL database** with a provider of your choice.
@@ -27,7 +27,7 @@ For local development, copy `.env.example` to `.env` and fill in the database co
 - Clearing cookies or using another browser creates a different workspace. Cross-device profile access requires user accounts; that is a planned next step.
 - Use a managed persistent database. Do not use an ephemeral database or delete the database volume if you need to retain profiles.
 - The app scopes every profile read/write/delete to the workspace ID stored in that browser's server-side session.
-- This prototype has no public bot-start endpoint and does not connect to Minecraft.
+- Mineflayer runtime with explicit per-session connect/disconnect controls.\n- Per-bot-name, per-server encrypted credential lookup for supported `/login` and `/register` prompts.\n- Authentication secrets are never written to logs.\n- Runtime uses offline-mode usernames; Microsoft account authentication is not configured.
 - Never commit `.env`, Gemini API keys, access tokens, or passwords. Store secrets in the hosting provider's secret manager.
 - Before public launch, add authenticated accounts, account recovery, database backups, and automated isolation tests.
 
@@ -36,3 +36,7 @@ For local development, copy `.env.example` to `.env` and fill in the database co
 2. Add automated tests for session isolation and profile ownership.
 3. Add a server-side Gemini decision service with strict usage limits.
 4. Only then consider an authorized Minecraft runtime with explicit manual connection controls.
+
+
+## Minecraft authentication vault
+Save a server password once under the exact bot name, hostname, and port. When the connected bot receives a recognizable login or registration prompt, it uses the matching encrypted vault entry. If no entry exists, save one in the dashboard; a bot waiting for credentials will retry the detected prompt. The runtime supports common English prompt wording and cannot guarantee detection for every custom server plugin or translated message. It does not bypass server authentication or access controls.
