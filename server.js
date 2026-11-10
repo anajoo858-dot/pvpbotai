@@ -357,39 +357,6 @@ async function sendVaultAuth(runtime, mode) {
   }
 }
 
-function stopCombat(runtime) {
-  if (runtime?.combatTimer) clearInterval(runtime.combatTimer);
-  if (runtime) runtime.combatTimer=null;
-  try { runtime?.bot?.pvp?.stop(); } catch {}
-  if(runtime) runtime.combatActive=false;
-}
-function findPlayerEntity(runtime,name) {
-  const player=Object.values(runtime?.bot?.players||{}).find(p=>p?.username?.toLowerCase()===String(name||"").toLowerCase());
-  return player?.entity || null;
-}
-async function startCombat(runtime) {
-  if(!runtime?.bot?.pvp) throw new Error("Combat plugin is not available. Reconnect after deployment.");
-  if(!runtime.targetPlayer) throw new Error("Choose an approved player first.");
-  if(runtime.combatActive) return;
-  runtime.combatActive=true;
-  runtime.combatTimer=setInterval(async()=>{
-    try {
-      if(!runtime.bot?.entity || !["connected","authenticated"].includes(runtime.status)){stopCombat(runtime);return;}
-      const target=findPlayerEntity(runtime,runtime.targetPlayer);
-      if(!target){stopCombat(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Attack stopped: selected player is no longer visible.","combat").catch(()=>{});return;}
-      const inventory=runtime.bot.inventory?.items?.()||[];
-      const weapon=inventory.filter(i=>/(sword|axe)$/.test(i.name)).sort((a,b)=>{
-        const score=n=>n.includes("netherite")?6:n.includes("diamond")?5:n.includes("iron")?4:n.includes("stone")?3:n.includes("golden")?2:n.includes("wooden")?1:0;
-        return score(b.name)-score(a.name);
-      })[0];
-      if(weapon && runtime.bot.heldItem?.type!==weapon.type) await runtime.bot.equip(weapon,"hand");
-      runtime.bot.pvp.attack(target);
-    } catch(error) {
-      stopCombat(runtime);
-      writeWorkspaceLog(runtime.workspaceId,"WARN","Attack stopped: "+String(error?.message||error).slice(0,240),"combat").catch(()=>{});
-    }
-  },700);
-}
 async function equipBestArmor(runtime,useElytra) {
   const bot=runtime?.bot;if(!bot?.entity)throw new Error("Wait until the bot has spawned.");
   const items=bot.inventory?.items?.()||[];
@@ -535,20 +502,6 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   res.json({targetPlayer:player,selected:true});
 });
 
-app.post("/api/combat/start",requireCsrf,async(req,res)=>{
-  const runtime=activeBots.get(req.session.workspaceId);
-  if(!runtime?.bot||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect and spawn the bot first."});
-  const player=cleanText(req.body?.player,16);
-  if(!player||player.toLowerCase()!==String(runtime.targetPlayer||"").toLowerCase())return res.status(400).json({error:"Select and confirm the opted-in player in Players first."});
-  if(req.body?.approved!==true)return res.status(400).json({error:"Confirm this player opted in and the server permits PvP."});
-  try{await startCombat(runtime);await writeWorkspaceLog(runtime.workspaceId,"INFO","Dedicated Attack started against approved player "+player+".","combat");res.json({active:true,targetPlayer:player});}
-  catch(error){res.status(409).json({error:error.message});}
-});
-app.post("/api/combat/stop",requireCsrf,(req,res)=>{
-  const runtime=activeBots.get(req.session.workspaceId);stopCombat(runtime);
-  if(runtime)writeWorkspaceLog(runtime.workspaceId,"INFO","Dedicated Attack stopped from dashboard.","combat").catch(()=>{});
-  res.json({active:false});
-});
 app.get("/api/inventory",(req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId),bot=runtime?.bot;
   if(!bot?.entity||!["connected","authenticated"].includes(runtime.status))return res.json({connected:false,items:[]});
@@ -617,13 +570,12 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   try { mineflayer = require("mineflayer"); }
   catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
   const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
-    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,combatActive:false,combatTimer:null,useElytra:false };
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,useElytra:false };
   activeBots.set(req.session.workspaceId,runtime);
   try {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
     if (profile.minecraftVersion && profile.minecraftVersion !== "auto") options.version = profile.minecraftVersion;
     runtime.bot = mineflayer.createBot(options);
-    try { const pvp = require("mineflayer-pvp"); runtime.bot.loadPlugin(pvp.plugin || pvp); } catch(error) { writeWorkspaceLog(runtime.workspaceId,"WARN","PvP plugin could not load: "+String(error?.message||error).slice(0,240),"combat").catch(()=>{}); }
     runtime.connectTimer = setTimeout(() => {
       if (runtime.status === "connecting") {
         runtime.status = "failed";
@@ -671,8 +623,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       writeWorkspaceLog(runtime.workspaceId,"ERROR",runtime.lastError,"bot").catch(()=>{});
     });
     runtime.bot.on("end",()=>{
-      stopCombat(runtime);
-      stopAutoTotem(runtime);
+          stopAutoTotem(runtime);
       stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
       if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
