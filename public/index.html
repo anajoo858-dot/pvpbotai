@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -47,6 +47,18 @@
         <div class="actions bot-controls"><button class="button primary" id="connect-bot" type="button"><span class="button-icon">↗</span> Connect bot</button><button class="button danger" id="disconnect-bot" type="button" disabled>Disconnect</button><span class="hint" id="runtime-status">Bot is disconnected.</span></div>
         <div class="connection-diagnostic" id="connection-diagnostic" aria-live="polite"><span class="diagnostic-orb"></span><div><strong id="diagnostic-title">Ready to connect</strong><p id="diagnostic-message">Connection diagnostics will appear here after you connect.</p></div></div>
         <p class="hint">Connection starts only when you press Connect. This server profile uses offline-mode usernames. Premium online-mode servers may require a Microsoft-authenticated account, which this build does not provide. Saved vault credentials are only used for matching server login/register prompts.</p>
+      </section>
+      <section class="panel section combat-section" id="combat">
+        <div class="section-head"><div><p class="eyebrow">PVP CONFIGURATION</p><h2>Combat setup</h2><p class="muted">Choose the game mode and preferred decision style for this profile.</p></div><span class="tag">PROFILE-SAVED</span></div>
+        <div class="combat-grid">
+          <label>Combat mode<select id="combat-mode">
+            <option value="smp">SMP</option><option value="cpvp">Crystal PvP (CPvP)</option><option value="sword">Sword PvP</option><option value="axe">Axe PvP</option><option value="uhc">UHC</option><option value="pot">Pot PvP</option>
+          </select><small>Defines the game mode the bot is configured around.</small></label>
+          <label>Fighting style<select id="fighting-style">
+            <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="tactical">Tactical</option><option value="adaptive">Adaptive</option>
+          </select><small>Sets the preferred risk and decision-making approach.</small></label>
+        </div>
+        <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
       </section>
       <section class="panel section" id="vault">
         <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
