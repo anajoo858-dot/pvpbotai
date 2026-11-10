@@ -357,7 +357,7 @@ async function sendVaultAuth(runtime, mode) {
   }
 }
 function startAutoTotem(runtime) {
-  if (!runtime?.bot || runtime.autoTotemTimer) return;
+  if (!runtime?.bot || !runtime.autoTotemEnabled || runtime.autoTotemTimer) return;
   runtime.autoTotemBusy = false;
   runtime.autoTotemMissingLogged = false;
   runtime.autoTotemTimer = setInterval(async () => {
@@ -404,7 +404,7 @@ function stopIdleWander(runtime) {
   }
 }
 function startIdleWander(runtime) {
-  if (!runtime?.bot || runtime.wanderTimer) return;
+  if (!runtime?.bot || !runtime.wanderEnabled || runtime.wanderTimer) return;
   runtime.wanderTimer = setInterval(() => {
     const bot = runtime.bot;
     if (!bot || !["connected","authenticated"].includes(runtime.status) || runtime.wanderMoveTimer) return;
@@ -427,6 +427,25 @@ function startIdleWander(runtime) {
   }, 5000);
   writeWorkspaceLog(runtime.workspaceId,"INFO","Idle wandering enabled: short random movements every 5 seconds.","movement").catch(()=>{});
 }
+app.get("/api/features", (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  res.json({autoTotem:runtime?.autoTotemEnabled ?? true,wander:runtime?.wanderEnabled ?? true,connected:!!runtime?.bot&&["connected","authenticated"].includes(runtime.status)});
+});
+app.post("/api/features", requireCsrf, (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot) return res.status(409).json({error:"Connect the bot first to change runtime features."});
+  if(typeof req.body?.autoTotem==="boolean") {
+    runtime.autoTotemEnabled=req.body.autoTotem;
+    if(runtime.autoTotemEnabled) startAutoTotem(runtime); else stopAutoTotem(runtime);
+    writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Totem "+(runtime.autoTotemEnabled?"enabled":"disabled")+" from dashboard.","inventory").catch(()=>{});
+  }
+  if(typeof req.body?.wander==="boolean") {
+    runtime.wanderEnabled=req.body.wander;
+    if(runtime.wanderEnabled) startIdleWander(runtime); else stopIdleWander(runtime);
+    writeWorkspaceLog(runtime.workspaceId,"INFO","Idle wandering "+(runtime.wanderEnabled?"enabled":"disabled")+" from dashboard.","movement").catch(()=>{});
+  }
+  res.json({autoTotem:runtime.autoTotemEnabled,wander:runtime.wanderEnabled});
+});
 app.get("/api/players", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   const connected=!!runtime?.bot&&["connected","authenticated"].includes(runtime.status);
@@ -462,7 +481,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   try { mineflayer = require("mineflayer"); }
   catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
   const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
-    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null };
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true };
   activeBots.set(req.session.workspaceId,runtime);
   try {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
@@ -481,7 +500,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       runtime.status="connected";runtime.lastError=null;
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
-    runtime.bot.on("spawn",()=>{runtime.status="connected";startAutoTotem(runtime);startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering are active.","bot").catch(()=>{});});
+    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.wanderEnabled)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering settings applied.","bot").catch(()=>{});});
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
