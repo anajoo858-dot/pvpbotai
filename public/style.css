@@ -136,3 +136,5 @@ input:focus,select:focus{border-color:rgba(255,255,255,.72);background:rgba(0,0,
 .feature-toggle small{font-size:12px;line-height:1.55;color:#aab3c9;max-width:520px}
 .feature-toggle input{width:21px;height:21px;accent-color:#dce6ff;flex:0 0 auto;cursor:pointer}
 .feature-toggle input:disabled{opacity:.4;cursor:not-allowed}
+
+.console-input-row{display:flex;align-items:center;gap:10px;margin-top:12px;padding:9px 10px;border:1px solid rgba(180,198,235,.17);border-radius:15px;background:rgba(6,11,22,.58)}.console-input-row input{flex:1;min-width:0;background:transparent;border:0;box-shadow:none}.console-input-row input:focus{background:transparent;box-shadow:none}.console-prompt{font:700 11px ui-monospace,monospace;color:#b6a9ff;white-space:nowrap}.console-input-row button{flex:0 0 auto}.console-input-row button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:600px){.console-input-row{gap:6px;padding:7px}.console-input-row button{padding:10px 12px}.console-prompt{font-size:10px}}
