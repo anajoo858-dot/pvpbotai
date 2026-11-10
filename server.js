@@ -254,12 +254,18 @@ app.post("/api/vault", requireCsrf, async (req, res) => {
   let encrypted;
   try { encrypted = encryptSecret(password); } catch { return res.status(503).json({ error: "Secure vault is not configured on the server." }); }
   const { botName, serverHost, serverPort } = identity.value;
-  const result = await pool.query(`INSERT INTO bot_server_vault (id,workspace_id,bot_name,server_host,server_port,encrypted_password,iv,auth_tag)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    ON CONFLICT (workspace_id,bot_name,server_host,server_port)
-    DO UPDATE SET encrypted_password=EXCLUDED.encrypted_password,iv=EXCLUDED.iv,auth_tag=EXCLUDED.auth_tag,updated_at=NOW()
-    RETURNING id,bot_name,server_host,server_port,updated_at`,
-    [crypto.randomUUID(),req.session.workspaceId,botName,serverHost,serverPort,encrypted.ciphertext,encrypted.iv,encrypted.tag]);
+  let result;
+  try {
+    result = await pool.query(`INSERT INTO bot_server_vault (id,workspace_id,bot_name,server_host,server_port,encrypted_password,iv,auth_tag)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (workspace_id,bot_name,server_host,server_port)
+      DO UPDATE SET encrypted_password=EXCLUDED.encrypted_password,iv=EXCLUDED.iv,auth_tag=EXCLUDED.auth_tag,updated_at=NOW()
+      RETURNING id,bot_name,server_host,server_port,updated_at`,
+      [crypto.randomUUID(),req.session.workspaceId,botName,serverHost,serverPort,encrypted.ciphertext,encrypted.iv,encrypted.tag]);
+  } catch (error) {
+    console.error("Vault save failed:", error.message);
+    return res.status(500).json({ error: "The server could not store this vault entry. Please retry; if it continues, check the database connection." });
+  }
   const running = activeBots.get(req.session.workspaceId);
   if (running && running.botName === botName && running.serverHost === serverHost && running.serverPort === serverPort) {
     running.password = password;
