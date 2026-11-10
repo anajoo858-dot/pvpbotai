@@ -185,10 +185,14 @@ async function init() {
     renderProfiles();
     const active = profiles.find(p => p.id === selectedProfileId) || profiles[0];
     if (active) fillForm(active);
-    $("profile-select").addEventListener("change", () => {
+    $("profile-select").addEventListener("change", async () => {
       const profile = selectedProfile();
       if (profile) fillForm(profile);
+      await refreshVault();
     });
+    $("bot-name").addEventListener("change", refreshVault);
+    $("vault-save").addEventListener("click", saveVaultEntry);
+    $("vault-refresh").addEventListener("click", refreshVault);
     $("load-profile").addEventListener("click", loadProfile);
     $("save-profile").addEventListener("click", saveProfile);
     $("delete-profile").addEventListener("click", deleteProfile);
