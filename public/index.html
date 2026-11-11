@@ -102,6 +102,19 @@
           <div class="actions"><button class="button primary" id="set-target" type="button" disabled>Set opponent</button><button class="button secondary" id="clear-target" type="button">Clear target</button><span class="hint" id="target-status">No opponent selected.</span></div>
           <p class="hint">Selecting a target does not start combat. Only use against opted-in players where server rules permit it. Auto-targeting is disabled.</p>
         </div>
+        <div class="target-panel" id="training-session">
+          <h3>Authorized training session</h3>
+          <p class="hint">Start a tracked practice session with the approved opponent. This control does not issue attacks; it tracks the selected mode, target, protocol version, and available inventory.</p>
+          <div class="actions">
+            <button class="button primary" id="training-start" type="button" disabled>Start Training Session</button>
+            <button class="button secondary" id="training-stop" type="button" disabled>Stop Session</button>
+            <span class="hint" id="training-status">Connect the bot and select an approved opponent.</span>
+          </div>
+          <div class="combat-grid">
+            <span class="hint" id="training-version">Protocol version: —</span>
+            <span class="hint" id="training-inventory">Inventory scan: —</span>
+          </div>
+        </div>
       </section>
       <section class="panel section" id="vault">
         <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
