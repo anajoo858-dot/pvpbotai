@@ -314,7 +314,47 @@ async function setOpponent(clear=false) {
     const result=await api("/api/target",{method:"POST",body:JSON.stringify({player:clear?"":$("target-player").value,approved:!clear&&$("target-approved").checked})});
     $("target-status").textContent=result.targetPlayer?"Selected opponent: "+result.targetPlayer:"Target cleared.";
     $("target-approved").checked=false;
+    await refreshTraining();
   } catch(e){$("target-status").textContent=e.message;}
+}
+async function refreshTraining() {
+  try {
+    const data=await api("/api/training");
+    const active=!!data.active;
+    $("training-start").disabled=active||!data.targetPlayer||!data.targetOnline;
+    $("training-stop").disabled=!active;
+    $("training-status").textContent=active
+      ? "ACTIVE · "+String(data.mode||"").toUpperCase()+" · Opponent: "+data.targetPlayer
+      : "STOPPED · "+(data.targetPlayer?"Approved opponent: "+data.targetPlayer:"No approved opponent selected.");
+    $("training-version").textContent="Bot protocol version: "+(data.botVersion||"Not available");
+    const items=data.inventory||[];
+    $("training-inventory").textContent="Inventory scan: "+items.length+" item types"+(items.length?" · "+items.slice(0,5).join(", ")+(items.length>5?"…":""):" · empty");
+  } catch(error) {
+    $("training-status").textContent="Training status unavailable: "+error.message;
+  }
+}
+async function startTraining() {
+  $("training-start").disabled=true;
+  try {
+    const data=await api("/api/training/start",{method:"POST",body:JSON.stringify({mode:$("combat-mode").value,fightingStyle:$("fighting-style").value})});
+    $("training-status").textContent="ACTIVE · "+String(data.mode||"").toUpperCase()+" · Opponent: "+data.targetPlayer;
+    await refreshTraining();
+    showFeedback("Authorized training session started.");
+  } catch(error) {
+    $("training-status").textContent=error.message;
+    await refreshTraining();
+  }
+}
+async function stopTraining() {
+  $("training-stop").disabled=true;
+  try {
+    await api("/api/training/stop",{method:"POST",body:"{}"});
+    await refreshTraining();
+    showFeedback("Training session stopped. The bot remains connected.");
+  } catch(error) {
+    $("training-status").textContent=error.message;
+    await refreshTraining();
+  }
 }
 async function refreshMonitor() {
   try {
@@ -358,6 +398,7 @@ async function connectBot() {
     await refreshBotState();
     await refreshFeatures();
     await refreshPlayers();
+    await refreshTraining();
     await refreshLogs();
   } catch(error) { showFeedback(error.message,true); }
 }
@@ -493,6 +534,8 @@ async function init() {
     $("refresh-players").addEventListener("click", refreshPlayers);
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
     $("set-target").addEventListener("click", () => setOpponent(false));
+    $("training-start").addEventListener("click",startTraining);
+    $("training-stop").addEventListener("click",stopTraining);
     $("inventory-refresh").addEventListener("click",refreshInventory);
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
@@ -517,6 +560,8 @@ async function init() {
     setInterval(refreshMonitor, 2000);
     setInterval(refreshFeatures, 5000);
     setInterval(refreshPlayers, 5000);
+    await refreshTraining();
+    setInterval(refreshTraining, 3000);
     await refreshLogs();
   } catch (error) { showFeedback(error.message, true); }
 }
