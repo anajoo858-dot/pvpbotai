@@ -491,6 +491,63 @@ app.post("/api/bot/chat", requireCsrf, async (req,res) => {
     res.status(502).json({ error: "Could not send the message. Check that the bot is still connected." });
   }
 });
+function stopTrainingSession(runtime, reason = "Stopped from dashboard") {
+  if (!runtime?.trainingSession) return false;
+  const previous = runtime.trainingSession;
+  runtime.trainingSession = null;
+  if (runtime.wanderEnabled && runtime.bot && ["connected","authenticated"].includes(runtime.status)) startIdleWander(runtime);
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Training session stopped: "+reason+". Bot connection remains active.","training").catch(()=>{});
+  return previous;
+}
+function trainingSnapshot(runtime) {
+  const session = runtime?.trainingSession || null;
+  const bot = runtime?.bot;
+  const targetName = session?.targetPlayer || runtime?.targetPlayer || null;
+  const target = targetName ? bot?.players?.[targetName] : null;
+  const items = (bot?.inventory?.items?.() || []).map(item => item.name);
+  return {
+    active:!!session,
+    status:session ? "active" : "stopped",
+    mode:session?.mode || null,
+    fightingStyle:session?.fightingStyle || null,
+    targetPlayer:session?.targetPlayer || null,
+    startedAt:session?.startedAt || null,
+    botVersion:bot?.version || null,
+    targetOnline:!!target?.entity,
+    inventory: [...new Set(items)].sort(),
+    note:"Training session tracking only; no automated attacks are issued."
+  };
+}
+app.get("/api/training", (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  res.set("Cache-Control","no-store");
+  res.json(trainingSnapshot(runtime));
+});
+app.post("/api/training/start", requireCsrf, async (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) return res.status(409).json({error:"Connect the bot and wait for it to spawn first."});
+  if(runtime.trainingSession) return res.status(409).json({error:"A training session is already active."});
+  const mode=cleanText(req.body?.mode,16).toLowerCase();
+  const modes=new Set(["smp","cpvp","sword","axe","uhc","pot"]);
+  if(!modes.has(mode)) return res.status(400).json({error:"Choose a valid training profile."});
+  const targetName=runtime.targetPlayer;
+  if(!targetName) return res.status(409).json({error:"Select an opted-in opponent in the approved arena first."});
+  const target=Object.values(runtime.bot.players||{}).find(player=>player?.username?.toLowerCase()===targetName.toLowerCase());
+  if(!target?.entity) {
+    runtime.targetPlayer=null;
+    return res.status(409).json({error:"The approved opponent is no longer online. Select them again when they return."});
+  }
+  runtime.trainingSession={mode,targetPlayer:target.username,fightingStyle:cleanText(req.body?.fightingStyle,16)||"balanced",startedAt:new Date().toISOString()};
+  stopIdleWander(runtime);
+  await writeWorkspaceLog(runtime.workspaceId,"INFO","Authorized training session started for "+target.username+" · "+mode.toUpperCase()+". No automated attacks are enabled.","training");
+  res.json(trainingSnapshot(runtime));
+});
+app.post("/api/training/stop", requireCsrf, async (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime) return res.json({active:false,status:"stopped"});
+  stopTrainingSession(runtime,"Stopped by user");
+  res.json(trainingSnapshot(runtime));
+});
 app.get("/api/players", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   const connected=!!runtime?.bot&&["connected","authenticating","authenticated"].includes(runtime.status);
@@ -501,12 +558,13 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime?.bot||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect the bot before selecting an opponent."});
   const player=cleanText(req.body?.player,16);
-  if(!player){runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
+  if(!player){stopTrainingSession(runtime,"Opponent selection cleared");runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
   if(req.body?.approved!==true)return res.status(400).json({error:"Confirm that the player opted in and the arena/server allows PvP."});
   const found=Object.values(runtime.bot.players||{}).some(p=>p?.username?.toLowerCase()===player.toLowerCase());
   if(!found)return res.status(404).json({error:"That player is not currently in the server roster."});
+  if(runtime.trainingSession && runtime.trainingSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopTrainingSession(runtime,"Approved opponent changed");
   runtime.targetPlayer=player;
-  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Target selection does not initiate combat.","combat").catch(()=>{});
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Selection does not start attacks.","combat").catch(()=>{});
   res.json({targetPlayer:player,selected:true});
 });
 
@@ -598,7 +656,8 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       runtime.status="connected";runtime.lastError=null;
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
-    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.wanderEnabled)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering settings applied.","bot").catch(()=>{});});
+    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.wanderEnabled&&!runtime.trainingSession)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering settings applied.","bot").catch(()=>{});});
+    runtime.bot.on("playerLeft",player=>{if(runtime.trainingSession&&player?.username?.toLowerCase()===runtime.trainingSession.targetPlayer.toLowerCase()){stopTrainingSession(runtime,"Approved opponent disconnected");runtime.targetPlayer=null;}});
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
@@ -633,6 +692,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
     });
     runtime.bot.on("end",()=>{
           stopAutoArmor(runtime);
+      stopTrainingSession(runtime,"Bot disconnected");
       stopAutoTotem(runtime);
       stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
@@ -651,6 +711,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
+  stopTrainingSession(runtime,"Bot disconnected from dashboard");
   stopAutoArmor(runtime);
   stopAutoTotem(runtime);
   stopIdleWander(runtime);
