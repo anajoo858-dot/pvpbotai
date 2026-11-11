@@ -562,8 +562,9 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   if(req.body?.approved!==true)return res.status(400).json({error:"Confirm that the player opted in and the arena/server allows PvP."});
   const found=Object.values(runtime.bot.players||{}).some(p=>p?.username?.toLowerCase()===player.toLowerCase());
   if(!found)return res.status(404).json({error:"That player is not currently in the server roster."});
+  if(runtime.trainingSession && runtime.trainingSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopTrainingSession(runtime,"Approved opponent changed");
   runtime.targetPlayer=player;
-  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Target selection does not initiate combat.","combat").catch(()=>{});
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Selection does not start attacks.","combat").catch(()=>{});
   res.json({targetPlayer:player,selected:true});
 });
 
@@ -710,6 +711,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if (!runtime) return res.json({botStatus:"disconnected",connected:false});
   runtime.status="disconnecting";
+  stopTrainingSession(runtime,"Bot disconnected from dashboard");
   stopAutoArmor(runtime);
   stopAutoTotem(runtime);
   stopIdleWander(runtime);
