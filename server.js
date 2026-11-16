@@ -496,69 +496,43 @@ function stopCombatLoop(runtime) {
   if (runtime?.combatTimer) clearInterval(runtime.combatTimer);
   if (runtime) {
     runtime.combatTimer = null;
-    runtime.combatBusy = false;
+    runtime.combatTargetEntityId = null;
+    try { runtime.bot?.pvp?.stop(); } catch {}
+    try { runtime.bot?.pathfinder?.setGoal(null); } catch {}
     for (const control of ["forward","back","left","right","sprint","jump"]) {
       try { runtime.bot?.setControlState(control, false); } catch {}
     }
   }
 }
-function chooseCombatWeapon(bot, mode) {
-  const items = bot.inventory?.items?.() || [];
-  const rank = name => name.includes("netherite") ? 6 : name.includes("diamond") ? 5 :
-    name.includes("iron") ? 4 : name.includes("stone") ? 3 : name.includes("golden") ? 2 : 1;
-  const preferred = mode === "axe" ? ["axe","sword"] : mode === "sword" ? ["sword","axe"] : ["sword","axe"];
-  for (const kind of preferred) {
-    const candidates = items.filter(item => item.name.includes("_" + kind));
-    if (candidates.length) return candidates.sort((x,y) => rank(y.name)-rank(x.name))[0];
-  }
-  return null;
-}
-async function runCombatTick(runtime) {
-  const session = runtime?.trainingSession, bot = runtime?.bot;
-  if (!session || !bot?.entity || !["connected","authenticated"].includes(runtime.status)) return;
-  const player = Object.values(bot.players || {}).find(p =>
-    p?.username?.toLowerCase() === session.targetPlayer.toLowerCase());
-  if (!player?.entity) {
-    stopTrainingSession(runtime, "Approved opponent went out of range or left the server");
-    runtime.targetPlayer = null;
-    return;
-  }
-  if (runtime.combatBusy) return;
-  runtime.combatBusy = true;
-  try {
-    const target = player.entity;
-    const distance = bot.entity.position.distanceTo(target.position);
-    await bot.lookAt(target.position.offset(0, 1, 0), true);
-    const weapon = chooseCombatWeapon(bot, session.mode);
-    if (weapon && bot.heldItem?.type !== weapon.type) await bot.equip(weapon, "hand");
-    if (distance > 3.2) {
-      bot.setControlState("forward", true);
-      bot.setControlState("sprint", distance > 5);
-    } else {
-      bot.setControlState("forward", false);
-      bot.setControlState("sprint", false);
-      if (Date.now() - (runtime.lastCombatAttackAt || 0) >= 650) {
-        bot.attack(target);
-        runtime.lastCombatAttackAt = Date.now();
-      }
-    }
-  } finally {
-    runtime.combatBusy = false;
-  }
-}
 function startCombatLoop(runtime) {
   if (!runtime?.trainingSession || runtime.combatTimer) return;
-  runtime.lastCombatAttackAt = 0;
-  runtime.combatTimer = setInterval(() => {
-    runCombatTick(runtime).catch(error => {
-      writeWorkspaceLog(runtime.workspaceId, "WARN", "Combat paused after a runtime error: " + String(error?.message || error).slice(0,180), "combat").catch(()=>{});
-      stopTrainingSession(runtime, "Combat runtime error");
-    });
-  }, 250);
-  runCombatTick(runtime).catch(error => {
-    writeWorkspaceLog(runtime.workspaceId, "WARN", "Combat could not start: " + String(error?.message || error).slice(0,180), "combat").catch(()=>{});
-    stopTrainingSession(runtime, "Combat start error");
-  });
+  const bot = runtime.bot;
+  if (!bot?.pvp || !bot?.pathfinder) {
+    writeWorkspaceLog(runtime.workspaceId,"ERROR","Combat plugins are unavailable. Redeploy so mineflayer-pvp and mineflayer-pathfinder are installed.","combat").catch(()=>{});
+    stopTrainingSession(runtime,"Combat plugins unavailable");
+    return;
+  }
+  const engageSelectedOpponent = () => {
+    const session = runtime.trainingSession;
+    if (!session || !bot.entity) return;
+    const player = Object.values(bot.players || {}).find(p =>
+      p?.username?.toLowerCase() === session.targetPlayer.toLowerCase());
+    if (!player?.entity) {
+      runtime.targetPlayer = null;
+      stopTrainingSession(runtime,"Approved opponent left or is no longer visible to the bot");
+      return;
+    }
+    const entityId = player.entity.id;
+    if (runtime.combatTargetEntityId !== entityId) {
+      runtime.combatTargetEntityId = entityId;
+      bot.pvp.attack(player.entity);
+      writeWorkspaceLog(runtime.workspaceId,"INFO","Pathfinding PvP engaged against "+session.targetPlayer+".","combat").catch(()=>{});
+    }
+  };
+  runtime.combatTargetEntityId = null;
+  engageSelectedOpponent();
+  if (!runtime.trainingSession) return;
+  runtime.combatTimer = setInterval(engageSelectedOpponent,1000);
 }
 function stopTrainingSession(runtime, reason = "Stopped from dashboard") {
   if (!runtime?.trainingSession) return false;
@@ -586,7 +560,8 @@ function trainingSnapshot(runtime) {
     targetOnline:!!target?.entity,
     inventory: [...new Set(items)].sort(),
     combatActive:!!runtime?.combatTimer,
-    note:"Local rule-based combat runs only against the selected opted-in opponent in the active training session."
+    combatEngine:bot?.pvp && bot?.pathfinder ? "mineflayer-pvp + pathfinder" : "plugins-loading-or-unavailable",
+    note:"Pathfinding PvP runs only against the selected opted-in opponent in the active training session."
   };
 }
 app.get("/api/training", (req,res) => {
@@ -737,6 +712,20 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
     if (profile.minecraftVersion && profile.minecraftVersion !== "auto") options.version = profile.minecraftVersion;
     runtime.bot = mineflayer.createBot(options);
+    const { pathfinder, Movements } = require("mineflayer-pathfinder");
+    const pvpPlugin = require("mineflayer-pvp").plugin;
+    runtime.bot.loadPlugin(pathfinder);
+    runtime.bot.loadPlugin(pvpPlugin);
+    runtime.bot.once("spawn", () => {
+      try {
+        const movements = new Movements(runtime.bot);
+        movements.canDig = false;
+        runtime.bot.pathfinder.setMovements(movements);
+        writeWorkspaceLog(runtime.workspaceId,"INFO","Pathfinder and PvP combat plugins initialized.","combat").catch(()=>{});
+      } catch (error) {
+        writeWorkspaceLog(runtime.workspaceId,"ERROR","Combat navigation setup failed: "+String(error?.message||error).slice(0,180),"combat").catch(()=>{});
+      }
+    });
     runtime.connectTimer = setTimeout(() => {
       if (runtime.status === "connecting") {
         runtime.status = "failed";
