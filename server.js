@@ -141,21 +141,17 @@ function validateProfile(input) {
   const serverPort = Number(input?.serverPort || 25565);
   const minecraftVersion = cleanText(input?.minecraftVersion || "auto", 20);
   const thinkingLevel = ["low", "medium", "high"].includes(input?.thinkingLevel) ? input.thinkingLevel : "medium";
-  const combatMode = ["general", "smp", "cpvp", "sword", "axe", "uhc", "pot"].includes(input?.combatMode) ? input.combatMode : "smp";
-  const fightingStyle = ["balanced", "aggressive", "defensive", "tactical", "adaptive"].includes(input?.fightingStyle) ? input.fightingStyle : "balanced";
-  const aiMode = ["hybrid", "ai", "rules"].includes(input?.aiMode) ? input.aiMode : "hybrid";
   if (!name) return { error: "Enter a profile name." };
   if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return { error: "Bot name must be 3–16 letters, numbers, or underscores." };
   if (!serverHost || !/^[a-zA-Z0-9.-]+$/.test(serverHost) || serverHost.startsWith(".") || serverHost.endsWith(".")) return { error: "Enter a valid hostname without a URL or protocol." };
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) return { error: "Port must be between 1 and 65535." };
-  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel, combatMode, fightingStyle, aiMode } };
+  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel } };
 }
 function publicProfile(row) {
   return {
     id: row.id, name: row.name, botName: row.bot_name, serverHost: row.server_host,
     serverPort: row.server_port, minecraftVersion: row.minecraft_version,
     aiProvider: row.ai_provider, thinkingLevel: row.thinking_level,
-    combatMode: row.combat_mode || "smp", fightingStyle: row.fighting_style || "balanced", aiMode: row.ai_mode || "hybrid",
     updatedAt: row.updated_at
   };
 }
@@ -194,9 +190,9 @@ app.post("/api/profiles", requireCsrf, async (req, res) => {
   const p = parsed.value;
   const id = crypto.randomUUID();
   const result = await pool.query(
-    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level,combat_mode,fighting_style,ai_mode)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,p.aiMode]
+    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel]
   );
   res.status(201).json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(workspaceId) });
 });
@@ -205,9 +201,9 @@ app.put("/api/profiles/:id", requireCsrf, async (req, res) => {
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   const p = parsed.value;
   const result = await pool.query(
-    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,combat_mode=$8,fighting_style=$9,ai_mode=$10,updated_at=NOW()
-     WHERE workspace_id=$11 AND id=$12 RETURNING *`,
-    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,p.aiMode,req.session.workspaceId,req.params.id]
+    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,updated_at=NOW()
+     WHERE workspace_id=$8 AND id=$9 RETURNING *`,
+    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,req.session.workspaceId,req.params.id]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Profile not found in this session." });
   res.json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(req.session.workspaceId) });
@@ -229,7 +225,7 @@ app.post("/api/profiles/:id/load", requireCsrf, async (req, res) => {
 });
 app.get("/api/profiles/export", async (req, res) => {
   const profiles = await listProfiles(req.session.workspaceId);
-  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle, aiMode }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle, aiMode })) });
+  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
 });
 // The vault API deliberately returns metadata only. Passwords are encrypted at rest
 // with AES-256-GCM and are never sent back to the browser after saving.
@@ -697,7 +693,6 @@ app.post("/api/follow/start",requireCsrf,(req,res)=>{
     runtime.followTimer=setInterval(()=>{
       const current=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===target.username.toLowerCase());
       if(!current?.entity){stopFollowMode(runtime,"Selected player left or is no longer visible");runtime.targetPlayer=null;return;}
-      runtime.bot.pathfinder.setGoal(new goals.GoalFollow(current.entity,2),true);
     },1500);
     writeWorkspaceLog(runtime.workspaceId,"INFO","Follow mode started for "+target.username+".","movement").catch(()=>{});
     res.json(trainingSnapshot(runtime));
@@ -831,7 +826,11 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
     runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.autoEatEnabled)startAutoEat(runtime);if(runtime.wanderEnabled&&!runtime.trainingSession)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Runtime utilities applied.","bot").catch(()=>{});});
-    runtime.bot.on("playerLeft",player=>{if(runtime.trainingSession&&player?.username?.toLowerCase()===runtime.trainingSession.targetPlayer.toLowerCase()){stopTrainingSession(runtime,"Approved opponent disconnected");runtime.targetPlayer=null;}});
+    runtime.bot.on("playerLeft",player=>{
+      const left=player?.username?.toLowerCase();
+      if(runtime.trainingSession&&left===runtime.trainingSession.targetPlayer.toLowerCase()){stopTrainingSession(runtime,"Selected player disconnected");runtime.targetPlayer=null;}
+      if(runtime.followSession&&left===runtime.followSession.targetPlayer.toLowerCase()){stopFollowMode(runtime,"Selected player disconnected");runtime.targetPlayer=null;}
+    });
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
