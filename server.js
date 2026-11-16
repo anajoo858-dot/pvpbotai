@@ -415,7 +415,7 @@ function findEdibleFood(bot) {
       if (unsafe.has(item.name)) return false;
       const metadata = bot.registry?.itemsByName?.[item.name];
       if (Number(metadata?.foodPoints) > 0) return true;
-      return /^(bread|cooked_|baked_potato|golden_apple|apple|carrot|potato|beetroot|melon_slice|dried_kelp|cookie|pumpkin_pie|chorus_fruit|sweet_berries|glow_berries|honey_bottle|mushroom_stew|rabbit_stew|beetroot_soup|cooked_rabbit|cooked_cod|cooked_salmon|cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken)$/.test(item.name);
+      return /^(bread|cooked_.*|baked_potato|golden_apple|apple|carrot|potato|beetroot|melon_slice|dried_kelp|cookie|pumpkin_pie|chorus_fruit|sweet_berries|glow_berries|honey_bottle|mushroom_stew|rabbit_stew|beetroot_soup|cooked_rabbit|cooked_cod|cooked_salmon|cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken)$/.test(item.name);
     })
     .sort((a,b) => {
       const rank = name => name.startsWith("cooked_") ? 5 : name === "bread" || name === "baked_potato" ? 4 : name === "golden_apple" ? 1 : 3;
