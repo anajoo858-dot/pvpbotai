@@ -321,6 +321,7 @@ async function refreshTraining() {
   try {
     const data=await api("/api/training");
     const active=!!data.active;
+    $("combat-analyze").disabled=!active;
     $("training-start").disabled=active||!data.targetPlayer||!data.targetOnline;
     $("training-stop").disabled=!active;
     $("training-status").textContent=active
@@ -333,13 +334,35 @@ async function refreshTraining() {
     $("training-status").textContent="Training status unavailable: "+error.message;
   }
 }
+async function analyzeCombat() {
+  const button=$("combat-analyze");
+  button.disabled=true;
+  $("combat-engine-status").textContent="Analyzing inventory and current status…";
+  try {
+    const data=await api("/api/combat/plan");
+    const plan=data.plan;
+    const panel=$("combat-plan");
+    panel.replaceChildren();
+    const heading=document.createElement("strong");heading.textContent="Combat plan · "+data.targetPlayer;
+    const summary=document.createElement("span");summary.textContent=plan.summary;
+    panel.append(heading,summary);
+    for(const step of plan.recommendations||[]) {
+      const line=document.createElement("span");line.textContent="• "+step;panel.append(line);
+    }
+    $("combat-engine-status").textContent="Analysis ready · "+new Date(data.generatedAt).toLocaleTimeString()+" · local rules engine";
+  } catch(error) {
+    $("combat-engine-status").textContent=error.message;
+  } finally {
+    await refreshTraining();
+  }
+}
 async function startTraining() {
   $("training-start").disabled=true;
   try {
     const data=await api("/api/training/start",{method:"POST",body:JSON.stringify({mode:$("combat-mode").value,fightingStyle:$("fighting-style").value})});
     $("training-status").textContent="ACTIVE · "+String(data.mode||"").toUpperCase()+" · Opponent: "+data.targetPlayer;
     await refreshTraining();
-    showFeedback("Authorized training session started.");
+    showFeedback("Combat started against the selected opponent.");
   } catch(error) {
     $("training-status").textContent=error.message;
     await refreshTraining();
@@ -350,7 +373,7 @@ async function stopTraining() {
   try {
     await api("/api/training/stop",{method:"POST",body:"{}"});
     await refreshTraining();
-    showFeedback("Training session stopped. The bot remains connected.");
+    showFeedback("Combat stopped. The bot remains connected.");
   } catch(error) {
     $("training-status").textContent=error.message;
     await refreshTraining();
@@ -536,6 +559,7 @@ async function init() {
     $("set-target").addEventListener("click", () => setOpponent(false));
     $("training-start").addEventListener("click",startTraining);
     $("training-stop").addEventListener("click",stopTraining);
+    $("combat-analyze").addEventListener("click",analyzeCombat);
     $("inventory-refresh").addEventListener("click",refreshInventory);
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));

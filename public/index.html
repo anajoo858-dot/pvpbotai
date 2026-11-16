@@ -63,15 +63,15 @@
         <div class="section-head"><div><p class="eyebrow">PVP CONFIGURATION</p><h2>Combat setup</h2><p class="muted">Choose the game mode and preferred decision style for this profile.</p></div><span class="tag">PROFILE-SAVED</span></div>
         <div class="combat-grid">
           <label>Combat mode<select id="combat-mode">
-            <option value="smp">SMP</option><option value="cpvp">Crystal PvP (CPvP)</option><option value="sword">Sword PvP</option><option value="axe">Axe PvP</option><option value="uhc">UHC</option><option value="pot">Pot PvP</option>
+            <option value="general">General Combat</option><option value="smp">SMP</option><option value="cpvp">Crystal PvP (CPvP)</option><option value="sword">Sword PvP</option><option value="axe">Axe PvP</option><option value="uhc">UHC</option><option value="pot">Pot PvP</option>
           </select><small>Defines the game mode the bot is configured around.</small></label>
           <label>Fighting style<select id="fighting-style">
             <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="tactical">Tactical</option><option value="adaptive">Adaptive</option>
           </select><small>Sets the preferred risk and decision-making approach.</small></label>
         </div>
-        <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
+        <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode strategies tune recommendations; analysis is available only inside an approved training session.</span></div>
         <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
-        <div class="combat-note"><strong>Combat engine status</strong><span>Mode, style, and AI preference are saved with the profile. Live combat is not active yet.</span></div>
+        <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode-specific strategies tune the plan; the engine never targets players outside an approved training session.</span></div>
       </section>
       <section class="panel section" id="utilities">
         <div class="section-head"><div><p class="eyebrow">BOT UTILITIES</p><h2>Auto Totem & Wander</h2><p class="muted">These controls apply to the connected bot and reset to enabled when a new bot session starts.</p></div><span class="tag">RUNTIME CONTROLS</span></div>
@@ -104,16 +104,21 @@
         </div>
         <div class="target-panel" id="training-session">
           <h3>Authorized training session</h3>
-          <p class="hint">Start a tracked practice session with the approved opponent. This control does not issue attacks; it tracks the selected mode, target, protocol version, and available inventory.</p>
+          <p class="hint">Choose an opted-in opponent in an approved arena, then start a local rule-based combat loop. No AI API key or external AI service is used.</p>
           <div class="actions">
-            <button class="button primary" id="training-start" type="button" disabled>Start Training Session</button>
-            <button class="button secondary" id="training-stop" type="button" disabled>Stop Session</button>
+            <button class="button primary" id="training-start" type="button" disabled>Start Combat</button>
+            <button class="button secondary" id="training-stop" type="button" disabled>Stop Combat</button>
             <span class="hint" id="training-status">Connect the bot and select an approved opponent.</span>
           </div>
           <div class="combat-grid">
             <span class="hint" id="training-version">Protocol version: —</span>
             <span class="hint" id="training-inventory">Inventory scan: —</span>
           </div>
+          <div class="actions">
+            <button class="button secondary" id="combat-analyze" type="button" disabled>Analyze Combat Loadout</button>
+            <span class="hint" id="combat-engine-status">Start combat in an approved arena to enable analysis.</span>
+          </div>
+          <div class="combat-note" id="combat-plan" aria-live="polite"><strong>Combat plan</strong><span>Recommendations appear here after loadout analysis.</span></div>
         </div>
       </section>
       <section class="panel section" id="vault">
