@@ -569,6 +569,14 @@ function stopCombatLoop(runtime) {
     }
   }
 }
+async function equipCombatItem(bot) {
+  const items=bot.inventory?.items?.()||[];
+  const score=name => /_sword$/.test(name)?100:/_axe$/.test(name)?85:(name==="mace"||name==="trident")?80:/_(pickaxe|shovel|hoe)$/.test(name)?50:0;
+  const best=items.filter(item=>score(item.name)>0).sort((a,b)=>score(b.name)-score(a.name))[0];
+  if(best){await bot.equip(best,"hand");return best.name;}
+  try{await bot.unequip("hand");}catch{}
+  return "bare hands";
+}
 function startCombatLoop(runtime) {
   if (!runtime?.trainingSession || runtime.combatTimer) return;
   const bot = runtime.bot;
@@ -590,14 +598,29 @@ function startCombatLoop(runtime) {
     const entityId = player.entity.id;
     if (runtime.combatTargetEntityId !== entityId) {
       runtime.combatTargetEntityId = entityId;
-      bot.pvp.attack(player.entity);
-      writeWorkspaceLog(runtime.workspaceId,"INFO","Pathfinding PvP engaged against "+session.targetPlayer+".","combat").catch(()=>{});
+      equipCombatItem(bot).then(weapon=>{
+        const current=Object.values(bot.players||{}).find(p=>p?.username?.toLowerCase()===session.targetPlayer.toLowerCase());
+        if(runtime.trainingSession===session && current?.entity?.id===entityId){
+          bot.pvp.attack(current.entity);
+          writeWorkspaceLog(runtime.workspaceId,"INFO","Combat engaged against "+session.targetPlayer+" using "+weapon+".","combat").catch(()=>{});
+        }
+      }).catch(error=>writeWorkspaceLog(runtime.workspaceId,"WARN","Could not equip a combat item: "+String(error?.message||error).slice(0,160),"combat").catch(()=>{}));
     }
   };
   runtime.combatTargetEntityId = null;
   engageSelectedOpponent();
   if (!runtime.trainingSession) return;
   runtime.combatTimer = setInterval(engageSelectedOpponent,1000);
+}
+function stopFollowMode(runtime, reason = "Stopped from dashboard") {
+  if(!runtime?.followSession) return false;
+  const previous=runtime.followSession;
+  if(runtime.followTimer) clearInterval(runtime.followTimer);
+  runtime.followTimer=null;runtime.followSession=null;
+  try{runtime.bot?.pathfinder?.setGoal(null);}catch{}
+  if(runtime.wanderEnabled&&runtime.bot&&["connected","authenticated"].includes(runtime.status))startIdleWander(runtime);
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Follow mode stopped: "+reason+".","movement").catch(()=>{});
+  return previous;
 }
 function stopTrainingSession(runtime, reason = "Stopped from dashboard") {
   if (!runtime?.trainingSession) return false;
@@ -616,6 +639,8 @@ function trainingSnapshot(runtime) {
   const items = (bot?.inventory?.items?.() || []).map(item => item.name);
   return {
     active:!!session,
+    followActive:!!runtime?.followSession,
+    followTarget:runtime?.followSession?.targetPlayer||null,
     status:session ? "active" : "stopped",
     mode:session?.mode || null,
     fightingStyle:session?.fightingStyle || null,
@@ -626,7 +651,7 @@ function trainingSnapshot(runtime) {
     inventory: [...new Set(items)].sort(),
     combatActive:!!runtime?.combatTimer,
     combatEngine:bot?.pvp && bot?.pathfinder ? "mineflayer-pvp + pathfinder" : "plugins-loading-or-unavailable",
-    note:"Pathfinding PvP runs only against the selected opted-in opponent in the active training session."
+    note:"Combat runs only against the player selected in the dashboard."
   };
 }
 app.get("/api/training", (req,res) => {
@@ -638,20 +663,18 @@ app.post("/api/training/start", requireCsrf, async (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) return res.status(409).json({error:"Connect the bot and wait for it to spawn first."});
   if(runtime.trainingSession) return res.status(409).json({error:"A training session is already active."});
-  const mode=cleanText(req.body?.mode,16).toLowerCase();
-  const modes=new Set(["general","smp","cpvp","sword","axe","uhc","pot"]);
-  if(!modes.has(mode)) return res.status(400).json({error:"Choose a valid training profile."});
+  if(runtime.followSession) stopFollowMode(runtime,"Combat started");
   const targetName=runtime.targetPlayer;
-  if(!targetName) return res.status(409).json({error:"Select an opted-in opponent in the approved arena first."});
+  if(!targetName) return res.status(409).json({error:"Choose an online player first."});
   const target=Object.values(runtime.bot.players||{}).find(player=>player?.username?.toLowerCase()===targetName.toLowerCase());
   if(!target?.entity) {
     runtime.targetPlayer=null;
     return res.status(409).json({error:"The approved opponent is no longer online. Select them again when they return."});
   }
-  runtime.trainingSession={mode,targetPlayer:target.username,fightingStyle:cleanText(req.body?.fightingStyle,16)||"balanced",startedAt:new Date().toISOString()};
+  runtime.trainingSession={mode:"general",targetPlayer:target.username,startedAt:new Date().toISOString()};
   stopIdleWander(runtime);
   startCombatLoop(runtime);
-  await writeWorkspaceLog(runtime.workspaceId,"INFO","Local rule-based combat started against opted-in opponent "+target.username+" · "+mode.toUpperCase()+".","combat");
+  await writeWorkspaceLog(runtime.workspaceId,"INFO","Local combat started against selected player "+target.username+".","combat");
   res.json(trainingSnapshot(runtime));
 });
 app.get("/api/combat/plan", (req,res) => {
@@ -661,7 +684,7 @@ app.get("/api/combat/plan", (req,res) => {
     return res.status(409).json({error:"Connect and spawn the bot first."});
   }
   if(!session || !runtime.targetPlayer || session.targetPlayer.toLowerCase()!==runtime.targetPlayer.toLowerCase()) {
-    return res.status(403).json({error:"Start an authorized training session with an opted-in opponent first."});
+    return res.status(403).json({error:"Start Combat with a selected player first."});
   }
   const target=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===session.targetPlayer.toLowerCase());
   if(!target?.entity) return res.status(409).json({error:"The approved opponent is no longer online."});
@@ -682,6 +705,33 @@ app.post("/api/training/stop", requireCsrf, async (req,res) => {
   stopTrainingSession(runtime,"Stopped by user");
   res.json(trainingSnapshot(runtime));
 });
+app.post("/api/follow/start",requireCsrf,(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot?.entity||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect the bot and wait for it to spawn first."});
+  if(runtime.trainingSession)stopTrainingSession(runtime,"Follow mode started");
+  if(runtime.followSession)stopFollowMode(runtime,"Follow restarted");
+  const name=runtime.targetPlayer;
+  const target=name?Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===name.toLowerCase()):null;
+  if(!target?.entity)return res.status(409).json({error:"Choose an online player first."});
+  try{
+    const {goals}=require("mineflayer-pathfinder");
+    stopIdleWander(runtime);
+    runtime.followSession={targetPlayer:target.username,startedAt:new Date().toISOString()};
+    runtime.bot.pathfinder.setGoal(new goals.GoalFollow(target.entity,2),true);
+    runtime.followTimer=setInterval(()=>{
+      const current=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===target.username.toLowerCase());
+      if(!current?.entity){stopFollowMode(runtime,"Selected player left or is no longer visible");runtime.targetPlayer=null;return;}
+      runtime.bot.pathfinder.setGoal(new goals.GoalFollow(current.entity,2),true);
+    },1500);
+    writeWorkspaceLog(runtime.workspaceId,"INFO","Follow mode started for "+target.username+".","movement").catch(()=>{});
+    res.json(trainingSnapshot(runtime));
+  }catch(error){stopFollowMode(runtime,"Follow setup failed");res.status(503).json({error:"Follow mode could not start: "+String(error?.message||error).slice(0,160)});}
+});
+app.post("/api/follow/stop",requireCsrf,(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(runtime)stopFollowMode(runtime,"Stopped by user");
+  res.json(trainingSnapshot(runtime));
+});
 app.get("/api/players", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   const connected=!!runtime?.bot&&["connected","authenticating","authenticated"].includes(runtime.status);
@@ -692,13 +742,13 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime?.bot||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect the bot before selecting an opponent."});
   const player=cleanText(req.body?.player,16);
-  if(!player){stopTrainingSession(runtime,"Opponent selection cleared");runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
-  if(req.body?.approved!==true)return res.status(400).json({error:"Confirm that the player opted in and the arena/server allows PvP."});
+  if(!player){stopTrainingSession(runtime,"Player selection cleared");stopFollowMode(runtime,"Player selection cleared");runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
   const found=Object.values(runtime.bot.players||{}).some(p=>p?.username?.toLowerCase()===player.toLowerCase());
   if(!found)return res.status(404).json({error:"That player is not currently in the server roster."});
-  if(runtime.trainingSession && runtime.trainingSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopTrainingSession(runtime,"Approved opponent changed");
+  if(runtime.trainingSession && runtime.trainingSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopTrainingSession(runtime,"Selected player changed");
+  if(runtime.followSession && runtime.followSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopFollowMode(runtime,"Selected player changed");
   runtime.targetPlayer=player;
-  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Selection does not start attacks.","combat").catch(()=>{});
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Selected player: "+player+". Selection alone does not start combat or following.","combat").catch(()=>{});
   res.json({targetPlayer:player,selected:true});
 });
 
@@ -841,6 +891,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
     runtime.bot.on("end",()=>{
           stopAutoArmor(runtime);
       stopTrainingSession(runtime,"Bot disconnected");
+      stopFollowMode(runtime,"Bot disconnected");
       stopAutoTotem(runtime);
       stopAutoEat(runtime);
       stopIdleWander(runtime);
