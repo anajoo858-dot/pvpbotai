@@ -63,7 +63,7 @@
         <div class="section-head"><div><p class="eyebrow">PVP CONFIGURATION</p><h2>Combat setup</h2><p class="muted">Choose the game mode and preferred decision style for this profile.</p></div><span class="tag">PROFILE-SAVED</span></div>
         <div class="combat-grid">
           <label>Combat mode<select id="combat-mode">
-            <option value="smp">SMP</option><option value="cpvp">Crystal PvP (CPvP)</option><option value="sword">Sword PvP</option><option value="axe">Axe PvP</option><option value="uhc">UHC</option><option value="pot">Pot PvP</option>
+            <option value="general">General Combat</option><option value="smp">SMP</option><option value="cpvp">Crystal PvP (CPvP)</option><option value="sword">Sword PvP</option><option value="axe">Axe PvP</option><option value="uhc">UHC</option><option value="pot">Pot PvP</option>
           </select><small>Defines the game mode the bot is configured around.</small></label>
           <label>Fighting style<select id="fighting-style">
             <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="tactical">Tactical</option><option value="adaptive">Adaptive</option>
@@ -71,7 +71,7 @@
         </div>
         <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
         <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
-        <div class="combat-note"><strong>Combat engine status</strong><span>Mode, style, and AI preference are saved with the profile. Live combat is not active yet.</span></div>
+        <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode-specific strategies tune the plan; the engine never targets players outside an approved training session.</span></div>
       </section>
       <section class="panel section" id="utilities">
         <div class="section-head"><div><p class="eyebrow">BOT UTILITIES</p><h2>Auto Totem & Wander</h2><p class="muted">These controls apply to the connected bot and reset to enabled when a new bot session starts.</p></div><span class="tag">RUNTIME CONTROLS</span></div>
