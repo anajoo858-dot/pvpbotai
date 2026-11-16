@@ -7,7 +7,6 @@ const { Pool } = require("pg");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const activeBots = new Map();
-const { buildCombatPlan } = require("./combat-engine");
 
 const app = express();
 const logStreams = new Map();
@@ -84,9 +83,6 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS combat_mode VARCHAR(20) NOT NULL DEFAULT 'smp'");
-  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS fighting_style VARCHAR(20) NOT NULL DEFAULT 'balanced'");
-  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) NOT NULL DEFAULT 'hybrid'");
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
   await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'system', message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
@@ -142,21 +138,17 @@ function validateProfile(input) {
   const serverPort = Number(input?.serverPort || 25565);
   const minecraftVersion = cleanText(input?.minecraftVersion || "auto", 20);
   const thinkingLevel = ["low", "medium", "high"].includes(input?.thinkingLevel) ? input.thinkingLevel : "medium";
-  const combatMode = ["general", "smp", "cpvp", "sword", "axe", "uhc", "pot"].includes(input?.combatMode) ? input.combatMode : "smp";
-  const fightingStyle = ["balanced", "aggressive", "defensive", "tactical", "adaptive"].includes(input?.fightingStyle) ? input.fightingStyle : "balanced";
-  const aiMode = ["hybrid", "ai", "rules"].includes(input?.aiMode) ? input.aiMode : "hybrid";
   if (!name) return { error: "Enter a profile name." };
   if (!/^[A-Za-z0-9_]{3,16}$/.test(botName)) return { error: "Bot name must be 3–16 letters, numbers, or underscores." };
   if (!serverHost || !/^[a-zA-Z0-9.-]+$/.test(serverHost) || serverHost.startsWith(".") || serverHost.endsWith(".")) return { error: "Enter a valid hostname without a URL or protocol." };
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) return { error: "Port must be between 1 and 65535." };
-  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel, combatMode, fightingStyle, aiMode } };
+  return { value: { name, botName, serverHost, serverPort, minecraftVersion, aiProvider: "Gemini", thinkingLevel } };
 }
 function publicProfile(row) {
   return {
     id: row.id, name: row.name, botName: row.bot_name, serverHost: row.server_host,
     serverPort: row.server_port, minecraftVersion: row.minecraft_version,
     aiProvider: row.ai_provider, thinkingLevel: row.thinking_level,
-    combatMode: row.combat_mode || "smp", fightingStyle: row.fighting_style || "balanced", aiMode: row.ai_mode || "hybrid",
     updatedAt: row.updated_at
   };
 }
@@ -195,9 +187,9 @@ app.post("/api/profiles", requireCsrf, async (req, res) => {
   const p = parsed.value;
   const id = crypto.randomUUID();
   const result = await pool.query(
-    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level,combat_mode,fighting_style,ai_mode)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,p.aiMode]
+    `INSERT INTO profiles (id,workspace_id,name,bot_name,server_host,server_port,minecraft_version,ai_provider,thinking_level)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+    [id,workspaceId,p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel]
   );
   res.status(201).json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(workspaceId) });
 });
@@ -206,9 +198,9 @@ app.put("/api/profiles/:id", requireCsrf, async (req, res) => {
   if (parsed.error) return res.status(400).json({ error: parsed.error });
   const p = parsed.value;
   const result = await pool.query(
-    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,combat_mode=$8,fighting_style=$9,ai_mode=$10,updated_at=NOW()
-     WHERE workspace_id=$11 AND id=$12 RETURNING *`,
-    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,p.combatMode,p.fightingStyle,p.aiMode,req.session.workspaceId,req.params.id]
+    `UPDATE profiles SET name=$1,bot_name=$2,server_host=$3,server_port=$4,minecraft_version=$5,ai_provider=$6,thinking_level=$7,updated_at=NOW()
+     WHERE workspace_id=$8 AND id=$9 RETURNING *`,
+    [p.name,p.botName,p.serverHost,p.serverPort,p.minecraftVersion,p.aiProvider,p.thinkingLevel,req.session.workspaceId,req.params.id]
   );
   if (!result.rows[0]) return res.status(404).json({ error: "Profile not found in this session." });
   res.json({ profile: publicProfile(result.rows[0]), profiles: await listProfiles(req.session.workspaceId) });
@@ -230,7 +222,7 @@ app.post("/api/profiles/:id/load", requireCsrf, async (req, res) => {
 });
 app.get("/api/profiles/export", async (req, res) => {
   const profiles = await listProfiles(req.session.workspaceId);
-  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle, aiMode }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel, combatMode, fightingStyle, aiMode })) });
+  res.json({ format: "pvpbotai-profiles-v1", profiles: profiles.map(({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel }) => ({ name, botName, serverHost, serverPort, minecraftVersion, aiProvider, thinkingLevel })) });
 });
 // The vault API deliberately returns metadata only. Passwords are encrypted at rest
 // with AES-256-GCM and are never sent back to the browser after saving.
@@ -414,6 +406,66 @@ function stopAutoTotem(runtime) {
   if (runtime?.autoTotemTimer) clearInterval(runtime.autoTotemTimer);
   if (runtime) runtime.autoTotemTimer = null;
 }
+
+function findEdibleFood(bot) {
+  const unsafe = new Set(["poisonous_potato","pufferfish","spider_eye","rotten_flesh","raw_chicken"]);
+  const items = bot.inventory?.items?.() || [];
+  return items
+    .filter(item => {
+      if (unsafe.has(item.name)) return false;
+      const metadata = bot.registry?.itemsByName?.[item.name];
+      if (Number(metadata?.foodPoints) > 0) return true;
+      return /^(bread|cooked_.*|baked_potato|golden_apple|apple|carrot|potato|beetroot|melon_slice|dried_kelp|cookie|pumpkin_pie|chorus_fruit|sweet_berries|glow_berries|honey_bottle|mushroom_stew|rabbit_stew|beetroot_soup|cooked_rabbit|cooked_cod|cooked_salmon|cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken)$/.test(item.name);
+    })
+    .sort((a,b) => {
+      const rank = name => name.startsWith("cooked_") ? 5 : name === "bread" || name === "baked_potato" ? 4 : name === "golden_apple" ? 1 : 3;
+      return rank(b.name)-rank(a.name);
+    })[0] || null;
+}
+
+function stopAutoEat(runtime) {
+  if (runtime?.autoEatTimer) clearInterval(runtime.autoEatTimer);
+  if (runtime) runtime.autoEatTimer = null;
+}
+
+function startAutoEat(runtime) {
+  if (!runtime?.bot || !runtime.autoEatEnabled || runtime.autoEatTimer) return;
+  runtime.autoEatBusy = false;
+  runtime.autoEatTimer = setInterval(async () => {
+    const bot = runtime.bot;
+    if (!bot?.entity || !["connected","authenticated"].includes(runtime.status) ||
+        runtime.autoEatBusy || !Number.isFinite(bot.food) || bot.food > 16) return;
+    const food = findEdibleFood(bot);
+    if (!food) {
+      if (!runtime.autoEatMissingLogged) {
+        runtime.autoEatMissingLogged = true;
+        writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Eat: hunger is low, but no safe food was found in inventory.","inventory").catch(()=>{});
+      }
+      return;
+    }
+    runtime.autoEatBusy = true;
+    const previous = bot.heldItem;
+    try {
+      await bot.equip(food,"hand");
+      await bot.consume();
+      runtime.autoEatMissingLogged = false;
+      writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Eat: consumed "+food.name+".","inventory").catch(()=>{});
+    } catch (error) {
+      writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Eat could not consume food: "+String(error?.message||error).slice(0,180),"inventory").catch(()=>{});
+    } finally {
+      try {
+        if (previous && bot.inventory?.items?.().some(item => item.type === previous.type)) {
+          const stillHeld = bot.heldItem;
+          if (stillHeld?.type !== previous.type) {
+            const restore = bot.inventory.items().find(item => item.type === previous.type);
+            if (restore) await bot.equip(restore,"hand");
+          }
+        }
+      } catch {}
+      runtime.autoEatBusy = false;
+    }
+  },1000);
+}
 function stopIdleWander(runtime) {
   if (runtime?.wanderTimer) clearInterval(runtime.wanderTimer);
   if (runtime?.wanderMoveTimer) clearTimeout(runtime.wanderMoveTimer);
@@ -451,7 +503,7 @@ function startIdleWander(runtime) {
 }
 app.get("/api/features", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
-  res.json({autoTotem:runtime?.autoTotemEnabled ?? true,wander:runtime?.wanderEnabled ?? true,connected:!!runtime?.bot&&["connected","authenticated"].includes(runtime.status)});
+  res.json({autoTotem:runtime?.autoTotemEnabled ?? true,autoEat:runtime?.autoEatEnabled ?? false,wander:runtime?.wanderEnabled ?? true,connected:!!runtime?.bot&&["connected","authenticated"].includes(runtime.status)});
 });
 app.post("/api/features", requireCsrf, (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
@@ -461,12 +513,17 @@ app.post("/api/features", requireCsrf, (req,res) => {
     if(runtime.autoTotemEnabled) startAutoTotem(runtime); else stopAutoTotem(runtime);
     writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Totem "+(runtime.autoTotemEnabled?"enabled":"disabled")+" from dashboard.","inventory").catch(()=>{});
   }
+  if(typeof req.body?.autoEat==="boolean") {
+    runtime.autoEatEnabled=req.body.autoEat;
+    if(runtime.autoEatEnabled) startAutoEat(runtime); else stopAutoEat(runtime);
+    writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Eat "+(runtime.autoEatEnabled?"enabled":"disabled")+" from dashboard.","inventory").catch(()=>{});
+  }
   if(typeof req.body?.wander==="boolean") {
     runtime.wanderEnabled=req.body.wander;
     if(runtime.wanderEnabled) startIdleWander(runtime); else stopIdleWander(runtime);
     writeWorkspaceLog(runtime.workspaceId,"INFO","Idle wandering "+(runtime.wanderEnabled?"enabled":"disabled")+" from dashboard.","movement").catch(()=>{});
   }
-  res.json({autoTotem:runtime.autoTotemEnabled,wander:runtime.wanderEnabled});
+  res.json({autoTotem:runtime.autoTotemEnabled,autoEat:runtime.autoEatEnabled,wander:runtime.wanderEnabled});
 });
 app.post("/api/bot/chat", requireCsrf, async (req,res) => {
   const runtime = activeBots.get(req.session.workspaceId);
@@ -504,6 +561,14 @@ function stopCombatLoop(runtime) {
     }
   }
 }
+async function equipCombatItem(bot) {
+  const items=bot.inventory?.items?.()||[];
+  const score=name => /_sword$/.test(name)?100:/_axe$/.test(name)?85:(name==="mace"||name==="trident")?80:/_(pickaxe|shovel|hoe)$/.test(name)?50:0;
+  const best=items.filter(item=>score(item.name)>0).sort((a,b)=>score(b.name)-score(a.name))[0];
+  if(best){await bot.equip(best,"hand");return best.name;}
+  try{await bot.unequip("hand");}catch{}
+  return "bare hands";
+}
 function startCombatLoop(runtime) {
   if (!runtime?.trainingSession || runtime.combatTimer) return;
   const bot = runtime.bot;
@@ -519,20 +584,35 @@ function startCombatLoop(runtime) {
       p?.username?.toLowerCase() === session.targetPlayer.toLowerCase());
     if (!player?.entity) {
       runtime.targetPlayer = null;
-      stopTrainingSession(runtime,"Approved opponent left or is no longer visible to the bot");
+      stopTrainingSession(runtime,"Selected player left or is no longer visible to the bot");
       return;
     }
     const entityId = player.entity.id;
     if (runtime.combatTargetEntityId !== entityId) {
       runtime.combatTargetEntityId = entityId;
-      bot.pvp.attack(player.entity);
-      writeWorkspaceLog(runtime.workspaceId,"INFO","Pathfinding PvP engaged against "+session.targetPlayer+".","combat").catch(()=>{});
+      equipCombatItem(bot).then(weapon=>{
+        const current=Object.values(bot.players||{}).find(p=>p?.username?.toLowerCase()===session.targetPlayer.toLowerCase());
+        if(runtime.trainingSession===session && current?.entity?.id===entityId){
+          bot.pvp.attack(current.entity);
+          writeWorkspaceLog(runtime.workspaceId,"INFO","Combat engaged against "+session.targetPlayer+" using "+weapon+".","combat").catch(()=>{});
+        }
+      }).catch(error=>writeWorkspaceLog(runtime.workspaceId,"WARN","Could not equip a combat item: "+String(error?.message||error).slice(0,160),"combat").catch(()=>{}));
     }
   };
   runtime.combatTargetEntityId = null;
   engageSelectedOpponent();
   if (!runtime.trainingSession) return;
   runtime.combatTimer = setInterval(engageSelectedOpponent,1000);
+}
+function stopFollowMode(runtime, reason = "Stopped from dashboard") {
+  if(!runtime?.followSession) return false;
+  const previous=runtime.followSession;
+  if(runtime.followTimer) clearInterval(runtime.followTimer);
+  runtime.followTimer=null;runtime.followSession=null;
+  try{runtime.bot?.pathfinder?.setGoal(null);}catch{}
+  if(runtime.wanderEnabled&&runtime.bot&&["connected","authenticated"].includes(runtime.status))startIdleWander(runtime);
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Follow mode stopped: "+reason+".","movement").catch(()=>{});
+  return previous;
 }
 function stopTrainingSession(runtime, reason = "Stopped from dashboard") {
   if (!runtime?.trainingSession) return false;
@@ -551,9 +631,10 @@ function trainingSnapshot(runtime) {
   const items = (bot?.inventory?.items?.() || []).map(item => item.name);
   return {
     active:!!session,
+    followActive:!!runtime?.followSession,
+    followTarget:runtime?.followSession?.targetPlayer||null,
     status:session ? "active" : "stopped",
     mode:session?.mode || null,
-    fightingStyle:session?.fightingStyle || null,
     targetPlayer:session?.targetPlayer || null,
     startedAt:session?.startedAt || null,
     botVersion:bot?.version || null,
@@ -561,7 +642,7 @@ function trainingSnapshot(runtime) {
     inventory: [...new Set(items)].sort(),
     combatActive:!!runtime?.combatTimer,
     combatEngine:bot?.pvp && bot?.pathfinder ? "mineflayer-pvp + pathfinder" : "plugins-loading-or-unavailable",
-    note:"Pathfinding PvP runs only against the selected opted-in opponent in the active training session."
+    note:"Combat runs only against the player selected in the dashboard."
   };
 }
 app.get("/api/training", (req,res) => {
@@ -573,48 +654,50 @@ app.post("/api/training/start", requireCsrf, async (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) return res.status(409).json({error:"Connect the bot and wait for it to spawn first."});
   if(runtime.trainingSession) return res.status(409).json({error:"A training session is already active."});
-  const mode=cleanText(req.body?.mode,16).toLowerCase();
-  const modes=new Set(["general","smp","cpvp","sword","axe","uhc","pot"]);
-  if(!modes.has(mode)) return res.status(400).json({error:"Choose a valid training profile."});
+  if(runtime.followSession) stopFollowMode(runtime,"Combat started");
   const targetName=runtime.targetPlayer;
-  if(!targetName) return res.status(409).json({error:"Select an opted-in opponent in the approved arena first."});
+  if(!targetName) return res.status(409).json({error:"Choose an online player first."});
   const target=Object.values(runtime.bot.players||{}).find(player=>player?.username?.toLowerCase()===targetName.toLowerCase());
   if(!target?.entity) {
     runtime.targetPlayer=null;
     return res.status(409).json({error:"The approved opponent is no longer online. Select them again when they return."});
   }
-  runtime.trainingSession={mode,targetPlayer:target.username,fightingStyle:cleanText(req.body?.fightingStyle,16)||"balanced",startedAt:new Date().toISOString()};
+  runtime.trainingSession={mode:"general",targetPlayer:target.username,startedAt:new Date().toISOString()};
   stopIdleWander(runtime);
   startCombatLoop(runtime);
-  await writeWorkspaceLog(runtime.workspaceId,"INFO","Local rule-based combat started against opted-in opponent "+target.username+" · "+mode.toUpperCase()+".","combat");
+  await writeWorkspaceLog(runtime.workspaceId,"INFO","Local combat started against selected player "+target.username+".","combat");
   res.json(trainingSnapshot(runtime));
-});
-app.get("/api/combat/plan", (req,res) => {
-  const runtime=activeBots.get(req.session.workspaceId);
-  const session=runtime?.trainingSession;
-  if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) {
-    return res.status(409).json({error:"Connect and spawn the bot first."});
-  }
-  if(!session || !runtime.targetPlayer || session.targetPlayer.toLowerCase()!==runtime.targetPlayer.toLowerCase()) {
-    return res.status(403).json({error:"Start an authorized training session with an opted-in opponent first."});
-  }
-  const target=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===session.targetPlayer.toLowerCase());
-  if(!target?.entity) return res.status(409).json({error:"The approved opponent is no longer online."});
-  const plan=buildCombatPlan({
-    mode:session.mode,
-    fightingStyle:session.fightingStyle,
-    health:runtime.bot.health,
-    food:runtime.bot.food,
-    inventory:(runtime.bot.inventory?.items?.()||[]).map(item=>({name:item.name,count:item.count})),
-    equipment:(runtime.bot.inventory?.slots||[]).slice(5,9).filter(Boolean).map(item=>item.name)
-  });
-  res.set("Cache-Control","no-store");
-  res.json({targetPlayer:session.targetPlayer,plan,generatedAt:new Date().toISOString(),execution:"manual-practice-guidance"});
 });
 app.post("/api/training/stop", requireCsrf, async (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime) return res.json({active:false,status:"stopped"});
   stopTrainingSession(runtime,"Stopped by user");
+  res.json(trainingSnapshot(runtime));
+});
+app.post("/api/follow/start",requireCsrf,(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(!runtime?.bot?.entity||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect the bot and wait for it to spawn first."});
+  if(runtime.trainingSession)stopTrainingSession(runtime,"Follow mode started");
+  if(runtime.followSession)stopFollowMode(runtime,"Follow restarted");
+  const name=runtime.targetPlayer;
+  const target=name?Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===name.toLowerCase()):null;
+  if(!target?.entity)return res.status(409).json({error:"Choose an online player first."});
+  try{
+    const {goals}=require("mineflayer-pathfinder");
+    stopIdleWander(runtime);
+    runtime.followSession={targetPlayer:target.username,startedAt:new Date().toISOString()};
+    runtime.bot.pathfinder.setGoal(new goals.GoalFollow(target.entity,2),true);
+    runtime.followTimer=setInterval(()=>{
+      const current=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===target.username.toLowerCase());
+      if(!current?.entity){stopFollowMode(runtime,"Selected player left or is no longer visible");runtime.targetPlayer=null;return;}
+    },1500);
+    writeWorkspaceLog(runtime.workspaceId,"INFO","Follow mode started for "+target.username+".","movement").catch(()=>{});
+    res.json(trainingSnapshot(runtime));
+  }catch(error){stopFollowMode(runtime,"Follow setup failed");res.status(503).json({error:"Follow mode could not start: "+String(error?.message||error).slice(0,160)});}
+});
+app.post("/api/follow/stop",requireCsrf,(req,res)=>{
+  const runtime=activeBots.get(req.session.workspaceId);
+  if(runtime)stopFollowMode(runtime,"Stopped by user");
   res.json(trainingSnapshot(runtime));
 });
 app.get("/api/players", (req,res) => {
@@ -627,13 +710,13 @@ app.post("/api/target",requireCsrf,(req,res)=>{
   const runtime=activeBots.get(req.session.workspaceId);
   if(!runtime?.bot||!["connected","authenticated"].includes(runtime.status))return res.status(409).json({error:"Connect the bot before selecting an opponent."});
   const player=cleanText(req.body?.player,16);
-  if(!player){stopTrainingSession(runtime,"Opponent selection cleared");runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
-  if(req.body?.approved!==true)return res.status(400).json({error:"Confirm that the player opted in and the arena/server allows PvP."});
+  if(!player){stopTrainingSession(runtime,"Player selection cleared");stopFollowMode(runtime,"Player selection cleared");runtime.targetPlayer=null;return res.json({targetPlayer:null,selected:false});}
   const found=Object.values(runtime.bot.players||{}).some(p=>p?.username?.toLowerCase()===player.toLowerCase());
   if(!found)return res.status(404).json({error:"That player is not currently in the server roster."});
-  if(runtime.trainingSession && runtime.trainingSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopTrainingSession(runtime,"Approved opponent changed");
+  if(runtime.trainingSession && runtime.trainingSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopTrainingSession(runtime,"Selected player changed");
+  if(runtime.followSession && runtime.followSession.targetPlayer.toLowerCase()!==player.toLowerCase()) stopFollowMode(runtime,"Selected player changed");
   runtime.targetPlayer=player;
-  writeWorkspaceLog(runtime.workspaceId,"INFO","Approved opponent selected: "+player+". Selection does not start attacks.","combat").catch(()=>{});
+  writeWorkspaceLog(runtime.workspaceId,"INFO","Selected player: "+player+". Selection alone does not start combat or following.","combat").catch(()=>{});
   res.json({targetPlayer:player,selected:true});
 });
 
@@ -706,7 +789,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   try { mineflayer = require("mineflayer"); }
   catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
   const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
-    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,useElytra:false,autoArmorEnabled:false,autoArmorTimer:null };
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,autoEatEnabled:false,wanderEnabled:true,useElytra:false,autoArmorEnabled:false,autoArmorTimer:null };
   activeBots.set(req.session.workspaceId,runtime);
   try {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
@@ -739,8 +822,12 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       runtime.status="connected";runtime.lastError=null;
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
-    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.wanderEnabled&&!runtime.trainingSession)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering settings applied.","bot").catch(()=>{});});
-    runtime.bot.on("playerLeft",player=>{if(runtime.trainingSession&&player?.username?.toLowerCase()===runtime.trainingSession.targetPlayer.toLowerCase()){stopTrainingSession(runtime,"Approved opponent disconnected");runtime.targetPlayer=null;}});
+    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.autoEatEnabled)startAutoEat(runtime);if(runtime.wanderEnabled&&!runtime.trainingSession)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Runtime utilities applied.","bot").catch(()=>{});});
+    runtime.bot.on("playerLeft",player=>{
+      const left=player?.username?.toLowerCase();
+      if(runtime.trainingSession&&left===runtime.trainingSession.targetPlayer.toLowerCase()){stopTrainingSession(runtime,"Selected player disconnected");runtime.targetPlayer=null;}
+      if(runtime.followSession&&left===runtime.followSession.targetPlayer.toLowerCase()){stopFollowMode(runtime,"Selected player disconnected");runtime.targetPlayer=null;}
+    });
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
       if (mode && runtime.authStatus !== "authenticated") {
@@ -776,7 +863,9 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
     runtime.bot.on("end",()=>{
           stopAutoArmor(runtime);
       stopTrainingSession(runtime,"Bot disconnected");
+      stopFollowMode(runtime,"Bot disconnected");
       stopAutoTotem(runtime);
+      stopAutoEat(runtime);
       stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
       if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
@@ -797,6 +886,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   stopTrainingSession(runtime,"Bot disconnected from dashboard");
   stopAutoArmor(runtime);
   stopAutoTotem(runtime);
+  stopAutoEat(runtime);
   stopIdleWander(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
   runtime.status="disconnected";runtime.authStatus="unknown";activeBots.delete(req.session.workspaceId);

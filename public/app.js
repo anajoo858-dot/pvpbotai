@@ -61,10 +61,7 @@ function formValues() {
     serverHost: $("server-host").value,
     serverPort: Number($("server-port").value),
     minecraftVersion: $("mc-version").value || "auto",
-    thinkingLevel: $("thinking-level").value,
-    combatMode: $("combat-mode").value,
-    fightingStyle: $("fighting-style").value,
-    aiMode: $("ai-mode").value
+    thinkingLevel: $("thinking-level").value
   };
 }
 function fillForm(profile) {
@@ -76,11 +73,6 @@ function fillForm(profile) {
   if (!$("vault-server-port").value.trim() || $("vault-server-port").value === "25565") $("vault-server-port").value = profile.serverPort;
   $("mc-version").value = profile.minecraftVersion;
   $("thinking-level").value = profile.thinkingLevel;
-  $("combat-mode").value = profile.combatMode || "smp";
-  $("fighting-style").value = profile.fightingStyle || "balanced";
-  $("ai-mode").value = profile.aiMode || "hybrid";
-  $("combat-mode").dispatchEvent(new Event("change"));
-  $("fighting-style").dispatchEvent(new Event("change"));
 }
 function renderProfiles() {
   const select = $("profile-select");
@@ -159,18 +151,22 @@ async function refreshFeatures() {
   try {
     const data = await api("/api/features");
     $("feature-auto-totem").checked = data.autoTotem;
+    $("feature-auto-eat").checked = data.autoEat;
     $("feature-wander").checked = data.wander;
     $("feature-auto-totem").disabled = !data.connected;
+    $("feature-auto-eat").disabled = !data.connected;
     $("feature-wander").disabled = !data.connected;
     $("features-status").textContent = data.connected ? "Connected · changes apply immediately." : "Connect the bot to change these settings.";
   } catch {}
 }
 async function updateFeatures() {
   const autoTotem = $("feature-auto-totem").checked;
+  const autoEat = $("feature-auto-eat").checked;
   const wander = $("feature-wander").checked;
   try {
-    const data = await api("/api/features", {method:"POST",body:JSON.stringify({autoTotem,wander})});
+    const data = await api("/api/features", {method:"POST",body:JSON.stringify({autoTotem,autoEat,wander})});
     $("feature-auto-totem").checked = data.autoTotem;
+    $("feature-auto-eat").checked = data.autoEat;
     $("feature-wander").checked = data.wander;
     $("features-status").textContent = "Runtime settings updated.";
   } catch(error) {
@@ -291,42 +287,36 @@ async function sendConsoleMessage(event) {
 }
 async function refreshPlayers() {
   try {
-    const data = await api("/api/players"), list = $("player-list"), select = $("target-player"), current = select.value;
-    list.replaceChildren(); select.replaceChildren();
+    const data = await api("/api/players"), select = $("target-player"), current = select.value;
+    select.replaceChildren();
     const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Choose an online player…"; select.append(empty);
     for (const p of data.players || []) {
       const option = document.createElement("option"); option.value=p.username; option.textContent=p.username+(p.ping!=null?" · "+p.ping+" ms":""); select.append(option);
-      const row=document.createElement("div");row.className="player-row";
-      const name=document.createElement("strong");name.textContent=p.username;
-      const online=document.createElement("span");online.className="player-online";online.textContent="ONLINE";row.append(name,online);list.append(row);
     }
     if ([...select.options].some(o=>o.value===current)) select.value=current;
-    $("player-count").textContent=(data.players||[]).length+" ONLINE";
-    $("players-status").textContent=data.connected?"Live roster · refreshes every 5 seconds":"Connect the bot to view players.";
-    $("set-target").disabled=!data.connected||!select.value;
-    $("target-status").textContent=data.targetPlayer?"Selected opponent: "+data.targetPlayer:"No opponent selected.";
-    if(!data.players?.length){const p=document.createElement("p");p.className="muted";p.textContent=data.connected?"No other players are visible yet.":"No server roster available.";list.append(p);}
+    $("players-status").textContent=data.connected?((data.players||[]).length+" online · refreshes every 5 seconds"):"Connect the bot to view players.";
+    if(data.targetPlayer && [...select.options].some(o=>o.value===data.targetPlayer)) select.value=data.targetPlayer;
+    $("training-start").disabled=!data.connected||!select.value;
+    $("follow-start").disabled=!data.connected||!select.value;
   } catch(e){$("players-status").textContent="Roster unavailable: "+e.message;}
 }
-async function setOpponent(clear=false) {
-  if(!clear&&!$("target-approved").checked){$("target-status").textContent="Confirm opt-in / approved arena first.";return;}
+async function setOpponent() {
   try {
-    const result=await api("/api/target",{method:"POST",body:JSON.stringify({player:clear?"":$("target-player").value,approved:!clear&&$("target-approved").checked})});
-    $("target-status").textContent=result.targetPlayer?"Selected opponent: "+result.targetPlayer:"Target cleared.";
-    $("target-approved").checked=false;
+    const result=await api("/api/target",{method:"POST",body:JSON.stringify({player:$("target-player").value})});
+    $("training-status").textContent=result.targetPlayer?"Selected player: "+result.targetPlayer:"Choose an online player.";
     await refreshTraining();
-  } catch(e){$("target-status").textContent=e.message;}
+  } catch(e){$("training-status").textContent=e.message;throw e;}
 }
 async function refreshTraining() {
   try {
     const data=await api("/api/training");
-    const active=!!data.active;
-    $("combat-analyze").disabled=!active;
-    $("training-start").disabled=active||!data.targetPlayer||!data.targetOnline;
+    const active=!!data.active, following=!!data.followActive;
+    $("training-start").disabled=active||following||!data.targetPlayer||!data.targetOnline;
     $("training-stop").disabled=!active;
-    $("training-status").textContent=active
-      ? "ACTIVE · "+String(data.mode||"").toUpperCase()+" · Opponent: "+data.targetPlayer
-      : "STOPPED · "+(data.targetPlayer?"Approved opponent: "+data.targetPlayer:"No approved opponent selected.");
+    $("follow-start").disabled=active||following||!data.targetPlayer||!data.targetOnline;
+    $("follow-stop").disabled=!following;
+    $("training-status").textContent=active?"COMBAT ACTIVE · "+data.targetPlayer:"COMBAT STOPPED · "+(data.targetPlayer?"Selected: "+data.targetPlayer:"No player selected.");
+    $("follow-status").textContent=following?"FOLLOWING · "+data.followTarget:"FOLLOW MODE STOPPED";
     $("training-version").textContent="Bot protocol version: "+(data.botVersion||"Not available");
     const items=data.inventory||[];
     $("training-inventory").textContent="Inventory scan: "+items.length+" item types"+(items.length?" · "+items.slice(0,5).join(", ")+(items.length>5?"…":""):" · empty");
@@ -334,39 +324,30 @@ async function refreshTraining() {
     $("training-status").textContent="Training status unavailable: "+error.message;
   }
 }
-async function analyzeCombat() {
-  const button=$("combat-analyze");
-  button.disabled=true;
-  $("combat-engine-status").textContent="Analyzing inventory and current status…";
-  try {
-    const data=await api("/api/combat/plan");
-    const plan=data.plan;
-    const panel=$("combat-plan");
-    panel.replaceChildren();
-    const heading=document.createElement("strong");heading.textContent="Combat plan · "+data.targetPlayer;
-    const summary=document.createElement("span");summary.textContent=plan.summary;
-    panel.append(heading,summary);
-    for(const step of plan.recommendations||[]) {
-      const line=document.createElement("span");line.textContent="• "+step;panel.append(line);
-    }
-    $("combat-engine-status").textContent="Analysis ready · "+new Date(data.generatedAt).toLocaleTimeString()+" · local rules engine";
-  } catch(error) {
-    $("combat-engine-status").textContent=error.message;
-  } finally {
-    await refreshTraining();
-  }
-}
 async function startTraining() {
   $("training-start").disabled=true;
   try {
-    const data=await api("/api/training/start",{method:"POST",body:JSON.stringify({mode:$("combat-mode").value,fightingStyle:$("fighting-style").value})});
-    $("training-status").textContent="ACTIVE · "+String(data.mode||"").toUpperCase()+" · Opponent: "+data.targetPlayer;
+    await setOpponent();
+    const data=await api("/api/training/start",{method:"POST",body:JSON.stringify({})});
+    $("training-status").textContent="COMBAT ACTIVE · "+data.targetPlayer;
     await refreshTraining();
     showFeedback("Combat started against the selected opponent.");
   } catch(error) {
     $("training-status").textContent=error.message;
     await refreshTraining();
   }
+}
+async function startFollow() {
+  try {
+    await setOpponent();
+    const data=await api("/api/follow/start",{method:"POST",body:JSON.stringify({})});
+    $("follow-status").textContent="FOLLOWING · "+data.followTarget;
+    await refreshTraining();
+  } catch(error) { $("follow-status").textContent=error.message; }
+}
+async function stopFollow() {
+  try { await api("/api/follow/stop",{method:"POST",body:"{}"}); await refreshTraining(); }
+  catch(error) { $("follow-status").textContent=error.message; }
 }
 async function stopTraining() {
   $("training-stop").disabled=true;
@@ -544,11 +525,12 @@ async function init() {
       await refreshVault();
     });
     $("bot-name").addEventListener("change", refreshVault);
-    for (const id of ["profile-name","bot-name","server-host","server-port","mc-version","thinking-level","combat-mode","fighting-style","ai-mode"]) {
+    for (const id of ["profile-name","bot-name","server-host","server-port","mc-version","thinking-level"]) {
       $(id).addEventListener("input", scheduleAutosave);
       $(id).addEventListener("change", scheduleAutosave);
     }
     $("feature-auto-totem").addEventListener("change", updateFeatures);
+    $("feature-auto-eat").addEventListener("change", updateFeatures);
     $("feature-wander").addEventListener("change", updateFeatures);
     $("vault-save").addEventListener("click", saveVaultEntry);
     $("vault-refresh").addEventListener("click", refreshVault);
@@ -556,17 +538,17 @@ async function init() {
     $("disconnect-bot").addEventListener("click", disconnectBot);
     $("refresh-players").addEventListener("click", refreshPlayers);
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
-    $("set-target").addEventListener("click", () => setOpponent(false));
+    $("target-player").addEventListener("change",()=>setOpponent().catch(()=>{}));
     $("training-start").addEventListener("click",startTraining);
     $("training-stop").addEventListener("click",stopTraining);
-    $("combat-analyze").addEventListener("click",analyzeCombat);
+    $("follow-start").addEventListener("click",startFollow);
+    $("follow-stop").addEventListener("click",stopFollow);
     $("inventory-refresh").addEventListener("click",refreshInventory);
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
     $("armor-equip").addEventListener("click",equipArmor);
     $("armor-enabled").addEventListener("change",equipArmor);
     $("armor-elytra").addEventListener("change",()=>{if($("armor-enabled").checked)equipArmor();});
-    $("clear-target").addEventListener("click", () => setOpponent(true));
     $("load-profile").addEventListener("click", loadProfile);
     $("save-profile").addEventListener("click", saveProfile);
     $("delete-profile").addEventListener("click", deleteProfile);
