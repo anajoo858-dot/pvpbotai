@@ -7,6 +7,7 @@ const { Pool } = require("pg");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const activeBots = new Map();
+const { buildCombatPlan } = require("./combat-engine");
 
 const app = express();
 const logStreams = new Map();
@@ -141,7 +142,7 @@ function validateProfile(input) {
   const serverPort = Number(input?.serverPort || 25565);
   const minecraftVersion = cleanText(input?.minecraftVersion || "auto", 20);
   const thinkingLevel = ["low", "medium", "high"].includes(input?.thinkingLevel) ? input.thinkingLevel : "medium";
-  const combatMode = ["smp", "cpvp", "sword", "axe", "uhc", "pot"].includes(input?.combatMode) ? input.combatMode : "smp";
+  const combatMode = ["general", "smp", "cpvp", "sword", "axe", "uhc", "pot"].includes(input?.combatMode) ? input.combatMode : "smp";
   const fightingStyle = ["balanced", "aggressive", "defensive", "tactical", "adaptive"].includes(input?.fightingStyle) ? input.fightingStyle : "balanced";
   const aiMode = ["hybrid", "ai", "rules"].includes(input?.aiMode) ? input.aiMode : "hybrid";
   if (!name) return { error: "Enter a profile name." };
@@ -528,7 +529,7 @@ app.post("/api/training/start", requireCsrf, async (req,res) => {
   if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) return res.status(409).json({error:"Connect the bot and wait for it to spawn first."});
   if(runtime.trainingSession) return res.status(409).json({error:"A training session is already active."});
   const mode=cleanText(req.body?.mode,16).toLowerCase();
-  const modes=new Set(["smp","cpvp","sword","axe","uhc","pot"]);
+  const modes=new Set(["general","smp","cpvp","sword","axe","uhc","pot"]);
   if(!modes.has(mode)) return res.status(400).json({error:"Choose a valid training profile."});
   const targetName=runtime.targetPlayer;
   if(!targetName) return res.status(409).json({error:"Select an opted-in opponent in the approved arena first."});
@@ -541,6 +542,28 @@ app.post("/api/training/start", requireCsrf, async (req,res) => {
   stopIdleWander(runtime);
   await writeWorkspaceLog(runtime.workspaceId,"INFO","Authorized training session started for "+target.username+" · "+mode.toUpperCase()+". No automated attacks are enabled.","training");
   res.json(trainingSnapshot(runtime));
+});
+app.get("/api/combat/plan", (req,res) => {
+  const runtime=activeBots.get(req.session.workspaceId);
+  const session=runtime?.trainingSession;
+  if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) {
+    return res.status(409).json({error:"Connect and spawn the bot first."});
+  }
+  if(!session || !runtime.targetPlayer || session.targetPlayer.toLowerCase()!==runtime.targetPlayer.toLowerCase()) {
+    return res.status(403).json({error:"Start an authorized training session with an opted-in opponent first."});
+  }
+  const target=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===session.targetPlayer.toLowerCase());
+  if(!target?.entity) return res.status(409).json({error:"The approved opponent is no longer online."});
+  const plan=buildCombatPlan({
+    mode:session.mode,
+    fightingStyle:session.fightingStyle,
+    health:runtime.bot.health,
+    food:runtime.bot.food,
+    inventory:(runtime.bot.inventory?.items?.()||[]).map(item=>({name:item.name,count:item.count})),
+    equipment:(runtime.bot.inventory?.slots||[]).slice(5,9).filter(Boolean).map(item=>item.name)
+  });
+  res.set("Cache-Control","no-store");
+  res.json({targetPlayer:session.targetPlayer,plan,generatedAt:new Date().toISOString(),execution:"manual-practice-guidance"});
 });
 app.post("/api/training/stop", requireCsrf, async (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
