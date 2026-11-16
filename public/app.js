@@ -349,7 +349,7 @@ async function analyzeCombat() {
     for(const step of plan.recommendations||[]) {
       const line=document.createElement("span");line.textContent="• "+step;panel.append(line);
     }
-    $("combat-engine-status").textContent="Analysis ready · "+new Date(data.generatedAt).toLocaleTimeString()+" · guidance only";
+    $("combat-engine-status").textContent="Analysis ready · "+new Date(data.generatedAt).toLocaleTimeString()+" · local rules engine";
   } catch(error) {
     $("combat-engine-status").textContent=error.message;
   } finally {
@@ -362,7 +362,7 @@ async function startTraining() {
     const data=await api("/api/training/start",{method:"POST",body:JSON.stringify({mode:$("combat-mode").value,fightingStyle:$("fighting-style").value})});
     $("training-status").textContent="ACTIVE · "+String(data.mode||"").toUpperCase()+" · Opponent: "+data.targetPlayer;
     await refreshTraining();
-    showFeedback("Authorized training session started.");
+    showFeedback("Combat started against the selected opponent.");
   } catch(error) {
     $("training-status").textContent=error.message;
     await refreshTraining();
@@ -373,7 +373,7 @@ async function stopTraining() {
   try {
     await api("/api/training/stop",{method:"POST",body:"{}"});
     await refreshTraining();
-    showFeedback("Training session stopped. The bot remains connected.");
+    showFeedback("Combat stopped. The bot remains connected.");
   } catch(error) {
     $("training-status").textContent=error.message;
     await refreshTraining();
