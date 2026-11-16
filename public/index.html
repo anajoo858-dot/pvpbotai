@@ -12,7 +12,7 @@
   <div class="shell">
     <aside class="sidebar">
       <div class="brand"><span class="brand-mark">P</span><div><strong>PvPBotAI</strong><small>CONTROL CENTER</small></div></div>
-      <nav><a class="active" href="#overview">Overview</a><a href="#monitor">Live monitor</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat setup</a><a href="#inventory">Inventory</a><a href="#players">Players</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
+      <nav><a class="active" href="#overview">Overview</a><a href="#monitor">Live monitor</a><a href="#profiles">Profiles</a><a href="#settings">AI settings</a><a href="#combat">Combat</a><a href="#inventory">Inventory</a><a href="#vault">Auth vault</a><a href="#console">Console</a><a href="#logs">Logs</a></nav>
       <div class="sidebar-note"><span class="dot"></span> Private browser session</div>
     </aside>
     <main>
@@ -60,18 +60,15 @@
         <p class="hint">Connection starts only when you press Connect. This server profile uses offline-mode usernames. Premium online-mode servers may require a Microsoft-authenticated account, which this build does not provide. Saved vault credentials are only used for matching server login/register prompts.</p>
       </section>
       <section class="panel section combat-section" id="combat">
-        <div class="section-head"><div><p class="eyebrow">PVP CONFIGURATION</p><h2>Combat setup</h2><p class="muted">Choose the game mode and preferred decision style for this profile.</p></div><span class="tag">PROFILE-SAVED</span></div>
+        <div class="section-head"><div><p class="eyebrow">LOCAL COMBAT ENGINE</p><h2>Combat</h2><p class="muted">Choose one online player, then start or stop combat. No AI API key is required.</p></div><span class="tag">RUNTIME CONTROL</span></div>
         <div class="combat-grid">
-          <label>Combat mode<select id="combat-mode">
-            <option value="general">General Combat</option><option value="smp">SMP</option><option value="cpvp">Crystal PvP (CPvP)</option><option value="sword">Sword PvP</option><option value="axe">Axe PvP</option><option value="uhc">UHC</option><option value="pot">Pot PvP</option>
-          </select><small>Defines the game mode the bot is configured around.</small></label>
-          <label>Fighting style<select id="fighting-style">
-            <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="tactical">Tactical</option><option value="adaptive">Adaptive</option>
-          </select><small>Sets the preferred risk and decision-making approach.</small></label>
+          <label>Online player<select id="target-player"><option value="">Choose a player…</option></select></label>
+          <div class="player-toolbar"><span class="hint" id="players-status">Connect the bot to load online players.</span><button class="button secondary" id="refresh-players" type="button">Refresh players</button></div>
         </div>
-        <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode strategies tune recommendations; analysis is available only inside an approved training session.</span></div>
-        <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
-        <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode-specific strategies tune the plan; the engine never targets players outside an approved training session.</span></div>
+        <div class="actions"><button class="button primary" id="training-start" type="button" disabled>Start Combat</button><button class="button secondary" id="training-stop" type="button" disabled>Stop Combat</button><span class="hint" id="training-status">Connect the bot and choose a player.</span></div>
+        <div class="target-panel"><h3>Follow Mode</h3><p class="hint">Follow the selected player without attacking. Combat and Follow Mode cannot run at the same time.</p><div class="actions"><button class="button secondary" id="follow-start" type="button" disabled>Start Following</button><button class="button secondary" id="follow-stop" type="button" disabled>Stop Following</button><span class="hint" id="follow-status">Follow mode is stopped.</span></div></div>
+        <p class="hint">Use Combat only in your own server or a PvP arena where the other players have agreed to spar. Selecting a player alone never starts an action.</p>
+        <div class="combat-grid"><span class="hint" id="training-version">Bot protocol version: —</span><span class="hint" id="training-inventory">Inventory scan: —</span></div>
       </section>
       <section class="panel section" id="utilities">
         <div class="section-head"><div><p class="eyebrow">BOT UTILITIES</p><h2>Auto Totem & Wander</h2><p class="muted">Auto Totem and Idle Wander default to enabled; Auto Eat defaults to off. All controls apply to the connected bot.</p></div><span class="tag">RUNTIME CONTROLS</span></div>
@@ -94,33 +91,6 @@
         <label class="feature-toggle"><span><strong>Auto equip armor</strong><small>Continuously checks your inventory and equips the best available armor.</small></span><input id="armor-enabled" type="checkbox"></label>
         <label class="feature-toggle"><span><strong>Prefer Elytra</strong><small>When enabled, equip an Elytra in the chest slot. When disabled, prefer the best chestplate.</small></span><input id="armor-elytra" type="checkbox"></label>
         <div class="actions"><button class="button primary" id="armor-equip" type="button">Equip Best Armor</button><span class="hint" id="armor-status">Waiting for bot.</span></div>
-      </section>
-      <section class="panel section" id="players">
-        <div class="section-head"><div><p class="eyebrow">LIVE SERVER ROSTER</p><h2>Players & leaderboard</h2><p class="muted">Online players visible to the connected bot. This is a live roster, not a stats ranking.</p></div><span class="tag" id="player-count">0 ONLINE</span></div>
-        <div class="player-toolbar"><span class="hint" id="players-status">Connect the bot to view players.</span><button class="button secondary" id="refresh-players" type="button">Refresh</button></div>
-        <div class="player-list" id="player-list"><p class="muted">No server roster available.</p></div>
-        <div class="target-panel"><h3>Opponent selection</h3><div class="combat-grid"><label>Target player<select id="target-player"><option value="">Choose an online player…</option></select></label><label class="target-confirm"><input id="target-approved" type="checkbox"> I confirm this player opted in / is in an approved arena.</label></div>
-          <div class="actions"><button class="button primary" id="set-target" type="button" disabled>Set opponent</button><button class="button secondary" id="clear-target" type="button">Clear target</button><span class="hint" id="target-status">No opponent selected.</span></div>
-          <p class="hint">Selecting a target does not start combat. Only use against opted-in players where server rules permit it. Auto-targeting is disabled.</p>
-        </div>
-        <div class="target-panel" id="training-session">
-          <h3>Authorized training session</h3>
-          <p class="hint">Choose an opted-in opponent in an approved arena, then start a local rule-based combat loop. No AI API key or external AI service is used.</p>
-          <div class="actions">
-            <button class="button primary" id="training-start" type="button" disabled>Start Combat</button>
-            <button class="button secondary" id="training-stop" type="button" disabled>Stop Combat</button>
-            <span class="hint" id="training-status">Connect the bot and select an approved opponent.</span>
-          </div>
-          <div class="combat-grid">
-            <span class="hint" id="training-version">Protocol version: —</span>
-            <span class="hint" id="training-inventory">Inventory scan: —</span>
-          </div>
-          <div class="actions">
-            <button class="button secondary" id="combat-analyze" type="button" disabled>Analyze Combat Loadout</button>
-            <span class="hint" id="combat-engine-status">Start combat in an approved arena to enable analysis.</span>
-          </div>
-          <div class="combat-note" id="combat-plan" aria-live="polite"><strong>Combat plan</strong><span>Recommendations appear here after loadout analysis.</span></div>
-        </div>
       </section>
       <section class="panel section" id="vault">
         <div class="section-head"><div><p class="eyebrow">PER-BOT SERVER CREDENTIALS</p><h2>Server vault</h2><p class="muted">Every bot name has its own server list. Profiles using the same bot name share the same vault.</p></div><span class="tag" id="vault-count">0 SAVED SERVERS</span></div>
