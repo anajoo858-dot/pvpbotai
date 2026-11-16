@@ -69,7 +69,7 @@
             <option value="balanced">Balanced</option><option value="aggressive">Aggressive</option><option value="defensive">Defensive</option><option value="tactical">Tactical</option><option value="adaptive">Adaptive</option>
           </select><small>Sets the preferred risk and decision-making approach.</small></label>
         </div>
-        <div class="combat-note"><strong>Combat engine status</strong><span>These choices are saved with the profile. Combat behavior modules still need to be implemented and tested before they change how the bot fights.</span></div>
+        <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode strategies tune recommendations; analysis is available only inside an approved training session.</span></div>
         <div class="combat-grid"><label>AI decision mode<select id="ai-mode"><option value="hybrid">Hybrid (recommended)</option><option value="ai">AI-assisted</option><option value="rules">Rules only (AI off)</option></select><small>AI is optional. This preference is saved; the combat decision engine is still under development.</small></label></div>
         <div class="combat-note"><strong>General Combat Engine</strong><span>Shared loadout-aware decision core for General Combat, SMP, CPvP, Sword, Axe, UHC, and Pot. Mode-specific strategies tune the plan; the engine never targets players outside an approved training session.</span></div>
       </section>
@@ -114,6 +114,11 @@
             <span class="hint" id="training-version">Protocol version: —</span>
             <span class="hint" id="training-inventory">Inventory scan: —</span>
           </div>
+          <div class="actions">
+            <button class="button secondary" id="combat-analyze" type="button" disabled>Analyze Combat Loadout</button>
+            <span class="hint" id="combat-engine-status">Start an authorized session to enable analysis.</span>
+          </div>
+          <div class="combat-note" id="combat-plan" aria-live="polite"><strong>Combat plan</strong><span>Recommendations appear here after loadout analysis.</span></div>
         </div>
       </section>
       <section class="panel section" id="vault">
