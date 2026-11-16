@@ -414,6 +414,66 @@ function stopAutoTotem(runtime) {
   if (runtime?.autoTotemTimer) clearInterval(runtime.autoTotemTimer);
   if (runtime) runtime.autoTotemTimer = null;
 }
+
+function findEdibleFood(bot) {
+  const unsafe = new Set(["poisonous_potato","pufferfish","spider_eye","rotten_flesh","raw_chicken"]);
+  const items = bot.inventory?.items?.() || [];
+  return items
+    .filter(item => {
+      if (unsafe.has(item.name)) return false;
+      const metadata = bot.registry?.itemsByName?.[item.name];
+      if (Number(metadata?.foodPoints) > 0) return true;
+      return /^(bread|cooked_|baked_potato|golden_apple|apple|carrot|potato|beetroot|melon_slice|dried_kelp|cookie|pumpkin_pie|chorus_fruit|sweet_berries|glow_berries|honey_bottle|mushroom_stew|rabbit_stew|beetroot_soup|cooked_rabbit|cooked_cod|cooked_salmon|cooked_beef|cooked_porkchop|cooked_mutton|cooked_chicken)$/.test(item.name);
+    })
+    .sort((a,b) => {
+      const rank = name => name.startsWith("cooked_") ? 5 : name === "bread" || name === "baked_potato" ? 4 : name === "golden_apple" ? 1 : 3;
+      return rank(b.name)-rank(a.name);
+    })[0] || null;
+}
+
+function stopAutoEat(runtime) {
+  if (runtime?.autoEatTimer) clearInterval(runtime.autoEatTimer);
+  if (runtime) runtime.autoEatTimer = null;
+}
+
+function startAutoEat(runtime) {
+  if (!runtime?.bot || !runtime.autoEatEnabled || runtime.autoEatTimer) return;
+  runtime.autoEatBusy = false;
+  runtime.autoEatTimer = setInterval(async () => {
+    const bot = runtime.bot;
+    if (!bot?.entity || !["connected","authenticated"].includes(runtime.status) ||
+        runtime.autoEatBusy || !Number.isFinite(bot.food) || bot.food > 16) return;
+    const food = findEdibleFood(bot);
+    if (!food) {
+      if (!runtime.autoEatMissingLogged) {
+        runtime.autoEatMissingLogged = true;
+        writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Eat: hunger is low, but no safe food was found in inventory.","inventory").catch(()=>{});
+      }
+      return;
+    }
+    runtime.autoEatBusy = true;
+    const previous = bot.heldItem;
+    try {
+      await bot.equip(food,"hand");
+      await bot.consume();
+      runtime.autoEatMissingLogged = false;
+      writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Eat: consumed "+food.name+".","inventory").catch(()=>{});
+    } catch (error) {
+      writeWorkspaceLog(runtime.workspaceId,"WARN","Auto Eat could not consume food: "+String(error?.message||error).slice(0,180),"inventory").catch(()=>{});
+    } finally {
+      try {
+        if (previous && bot.inventory?.items?.().some(item => item.type === previous.type)) {
+          const stillHeld = bot.heldItem;
+          if (stillHeld?.type !== previous.type) {
+            const restore = bot.inventory.items().find(item => item.type === previous.type);
+            if (restore) await bot.equip(restore,"hand");
+          }
+        }
+      } catch {}
+      runtime.autoEatBusy = false;
+    }
+  },1000);
+}
 function stopIdleWander(runtime) {
   if (runtime?.wanderTimer) clearInterval(runtime.wanderTimer);
   if (runtime?.wanderMoveTimer) clearTimeout(runtime.wanderMoveTimer);
@@ -451,7 +511,7 @@ function startIdleWander(runtime) {
 }
 app.get("/api/features", (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
-  res.json({autoTotem:runtime?.autoTotemEnabled ?? true,wander:runtime?.wanderEnabled ?? true,connected:!!runtime?.bot&&["connected","authenticated"].includes(runtime.status)});
+  res.json({autoTotem:runtime?.autoTotemEnabled ?? true,autoEat:runtime?.autoEatEnabled ?? false,wander:runtime?.wanderEnabled ?? true,connected:!!runtime?.bot&&["connected","authenticated"].includes(runtime.status)});
 });
 app.post("/api/features", requireCsrf, (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
@@ -461,12 +521,17 @@ app.post("/api/features", requireCsrf, (req,res) => {
     if(runtime.autoTotemEnabled) startAutoTotem(runtime); else stopAutoTotem(runtime);
     writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Totem "+(runtime.autoTotemEnabled?"enabled":"disabled")+" from dashboard.","inventory").catch(()=>{});
   }
+  if(typeof req.body?.autoEat==="boolean") {
+    runtime.autoEatEnabled=req.body.autoEat;
+    if(runtime.autoEatEnabled) startAutoEat(runtime); else stopAutoEat(runtime);
+    writeWorkspaceLog(runtime.workspaceId,"INFO","Auto Eat "+(runtime.autoEatEnabled?"enabled":"disabled")+" from dashboard.","inventory").catch(()=>{});
+  }
   if(typeof req.body?.wander==="boolean") {
     runtime.wanderEnabled=req.body.wander;
     if(runtime.wanderEnabled) startIdleWander(runtime); else stopIdleWander(runtime);
     writeWorkspaceLog(runtime.workspaceId,"INFO","Idle wandering "+(runtime.wanderEnabled?"enabled":"disabled")+" from dashboard.","movement").catch(()=>{});
   }
-  res.json({autoTotem:runtime.autoTotemEnabled,wander:runtime.wanderEnabled});
+  res.json({autoTotem:runtime.autoTotemEnabled,autoEat:runtime.autoEatEnabled,wander:runtime.wanderEnabled});
 });
 app.post("/api/bot/chat", requireCsrf, async (req,res) => {
   const runtime = activeBots.get(req.session.workspaceId);
@@ -706,7 +771,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
   try { mineflayer = require("mineflayer"); }
   catch { return res.status(503).json({ error: "Minecraft runtime dependency is not installed. Redeploy the latest project." }); }
   const runtime = { workspaceId:req.session.workspaceId,botName:profile.botName,serverHost:profile.serverHost,serverPort:profile.serverPort,
-    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,wanderEnabled:true,useElytra:false,autoArmorEnabled:false,autoArmorTimer:null };
+    password,bot:null,status:"connecting",authStatus:"waiting",authAttempts:0,awaitingCredentials:false,lastPromptMode:null,autoTotemEnabled:true,autoEatEnabled:false,wanderEnabled:true,useElytra:false,autoArmorEnabled:false,autoArmorTimer:null };
   activeBots.set(req.session.workspaceId,runtime);
   try {
     const options = { host:profile.serverHost,port:profile.serverPort,username:profile.botName,auth:"offline" };
@@ -739,7 +804,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
       runtime.status="connected";runtime.lastError=null;
       writeWorkspaceLog(runtime.workspaceId,"INFO","Minecraft login handshake completed for "+runtime.botName+". Waiting for world spawn.","bot").catch(()=>{});
     });
-    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.wanderEnabled&&!runtime.trainingSession)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Auto Totem and idle wandering settings applied.","bot").catch(()=>{});});
+    runtime.bot.on("spawn",()=>{runtime.status="connected";if(runtime.autoTotemEnabled)startAutoTotem(runtime);if(runtime.autoEatEnabled)startAutoEat(runtime);if(runtime.wanderEnabled&&!runtime.trainingSession)startIdleWander(runtime);writeWorkspaceLog(runtime.workspaceId,"INFO","Bot spawned in the server world. Runtime utilities applied.","bot").catch(()=>{});});
     runtime.bot.on("playerLeft",player=>{if(runtime.trainingSession&&player?.username?.toLowerCase()===runtime.trainingSession.targetPlayer.toLowerCase()){stopTrainingSession(runtime,"Approved opponent disconnected");runtime.targetPlayer=null;}});
     runtime.bot.on("messagestr",(message)=>{
       const mode = authPromptType(message);
@@ -777,6 +842,7 @@ app.post("/api/bot/connect", requireCsrf, async (req, res) => {
           stopAutoArmor(runtime);
       stopTrainingSession(runtime,"Bot disconnected");
       stopAutoTotem(runtime);
+      stopAutoEat(runtime);
       stopIdleWander(runtime);
       if (runtime.connectTimer) clearTimeout(runtime.connectTimer);
       if (runtime.status !== "failed" && runtime.status !== "disconnecting") runtime.status="disconnected";
@@ -797,6 +863,7 @@ app.post("/api/bot/disconnect", requireCsrf, async (req,res)=>{
   stopTrainingSession(runtime,"Bot disconnected from dashboard");
   stopAutoArmor(runtime);
   stopAutoTotem(runtime);
+  stopAutoEat(runtime);
   stopIdleWander(runtime);
   try { runtime.bot?.quit("Dashboard disconnect"); } catch {}
   runtime.status="disconnected";runtime.authStatus="unknown";activeBots.delete(req.session.workspaceId);
