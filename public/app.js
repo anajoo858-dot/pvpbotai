@@ -61,8 +61,7 @@ function formValues() {
     serverHost: $("server-host").value,
     serverPort: Number($("server-port").value),
     minecraftVersion: $("mc-version").value || "auto",
-    thinkingLevel: $("thinking-level").value,
-    aiMode: $("ai-mode").value
+    thinkingLevel: $("thinking-level").value
   };
 }
 function fillForm(profile) {
@@ -74,7 +73,6 @@ function fillForm(profile) {
   if (!$("vault-server-port").value.trim() || $("vault-server-port").value === "25565") $("vault-server-port").value = profile.serverPort;
   $("mc-version").value = profile.minecraftVersion;
   $("thinking-level").value = profile.thinkingLevel;
-  $("ai-mode").value = profile.aiMode || "hybrid";
 }
 function renderProfiles() {
   const select = $("profile-select");
@@ -307,7 +305,7 @@ async function setOpponent() {
     const result=await api("/api/target",{method:"POST",body:JSON.stringify({player:$("target-player").value})});
     $("training-status").textContent=result.targetPlayer?"Selected player: "+result.targetPlayer:"Choose an online player.";
     await refreshTraining();
-  } catch(e){$("training-status").textContent=e.message;}
+  } catch(e){$("training-status").textContent=e.message;throw e;}
 }
 async function refreshTraining() {
   try {
@@ -324,28 +322,6 @@ async function refreshTraining() {
     $("training-inventory").textContent="Inventory scan: "+items.length+" item types"+(items.length?" · "+items.slice(0,5).join(", ")+(items.length>5?"…":""):" · empty");
   } catch(error) {
     $("training-status").textContent="Training status unavailable: "+error.message;
-  }
-}
-async function analyzeCombat() {
-  const button=$("combat-analyze");
-  button.disabled=true;
-  $("combat-engine-status").textContent="Analyzing inventory and current status…";
-  try {
-    const data=await api("/api/combat/plan");
-    const plan=data.plan;
-    const panel=$("combat-plan");
-    panel.replaceChildren();
-    const heading=document.createElement("strong");heading.textContent="Combat plan · "+data.targetPlayer;
-    const summary=document.createElement("span");summary.textContent=plan.summary;
-    panel.append(heading,summary);
-    for(const step of plan.recommendations||[]) {
-      const line=document.createElement("span");line.textContent="• "+step;panel.append(line);
-    }
-    $("combat-engine-status").textContent="Analysis ready · "+new Date(data.generatedAt).toLocaleTimeString()+" · local rules engine";
-  } catch(error) {
-    $("combat-engine-status").textContent=error.message;
-  } finally {
-    await refreshTraining();
   }
 }
 async function startTraining() {
@@ -549,7 +525,7 @@ async function init() {
       await refreshVault();
     });
     $("bot-name").addEventListener("change", refreshVault);
-    for (const id of ["profile-name","bot-name","server-host","server-port","mc-version","thinking-level","ai-mode"]) {
+    for (const id of ["profile-name","bot-name","server-host","server-port","mc-version","thinking-level"]) {
       $(id).addEventListener("input", scheduleAutosave);
       $(id).addEventListener("change", scheduleAutosave);
     }
@@ -562,7 +538,7 @@ async function init() {
     $("disconnect-bot").addEventListener("click", disconnectBot);
     $("refresh-players").addEventListener("click", refreshPlayers);
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
-    $("target-player").addEventListener("change",setOpponent);
+    $("target-player").addEventListener("change",()=>setOpponent().catch(()=>{}));
     $("training-start").addEventListener("click",startTraining);
     $("training-stop").addEventListener("click",stopTraining);
     $("follow-start").addEventListener("click",startFollow);
