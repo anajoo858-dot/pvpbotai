@@ -333,6 +333,28 @@ async function refreshTraining() {
     $("training-status").textContent="Training status unavailable: "+error.message;
   }
 }
+async function analyzeCombat() {
+  const button=$("combat-analyze");
+  button.disabled=true;
+  $("combat-engine-status").textContent="Analyzing inventory and current status…";
+  try {
+    const data=await api("/api/combat/plan");
+    const plan=data.plan;
+    const panel=$("combat-plan");
+    panel.replaceChildren();
+    const heading=document.createElement("strong");heading.textContent="Combat plan · "+data.targetPlayer;
+    const summary=document.createElement("span");summary.textContent=plan.summary;
+    panel.append(heading,summary);
+    for(const step of plan.recommendations||[]) {
+      const line=document.createElement("span");line.textContent="• "+step;panel.append(line);
+    }
+    $("combat-engine-status").textContent="Analysis ready · "+new Date(data.generatedAt).toLocaleTimeString()+" · guidance only";
+  } catch(error) {
+    $("combat-engine-status").textContent=error.message;
+  } finally {
+    await refreshTraining();
+  }
+}
 async function startTraining() {
   $("training-start").disabled=true;
   try {
@@ -535,7 +557,7 @@ async function init() {
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
     $("set-target").addEventListener("click", () => setOpponent(false));
     $("training-start").addEventListener("click",startTraining);
-    $("training-stop").addEventListener("click",stopTraining);
+    $("training-stop").addEventListener("click",stopTraining);\n    $("combat-analyze").addEventListener("click",analyzeCombat);
     $("inventory-refresh").addEventListener("click",refreshInventory);
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
