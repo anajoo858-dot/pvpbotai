@@ -159,18 +159,22 @@ async function refreshFeatures() {
   try {
     const data = await api("/api/features");
     $("feature-auto-totem").checked = data.autoTotem;
+    $("feature-auto-eat").checked = data.autoEat;
     $("feature-wander").checked = data.wander;
     $("feature-auto-totem").disabled = !data.connected;
+    $("feature-auto-eat").disabled = !data.connected;
     $("feature-wander").disabled = !data.connected;
     $("features-status").textContent = data.connected ? "Connected · changes apply immediately." : "Connect the bot to change these settings.";
   } catch {}
 }
 async function updateFeatures() {
   const autoTotem = $("feature-auto-totem").checked;
+  const autoEat = $("feature-auto-eat").checked;
   const wander = $("feature-wander").checked;
   try {
-    const data = await api("/api/features", {method:"POST",body:JSON.stringify({autoTotem,wander})});
+    const data = await api("/api/features", {method:"POST",body:JSON.stringify({autoTotem,autoEat,wander})});
     $("feature-auto-totem").checked = data.autoTotem;
+    $("feature-auto-eat").checked = data.autoEat;
     $("feature-wander").checked = data.wander;
     $("features-status").textContent = "Runtime settings updated.";
   } catch(error) {
@@ -549,6 +553,7 @@ async function init() {
       $(id).addEventListener("change", scheduleAutosave);
     }
     $("feature-auto-totem").addEventListener("change", updateFeatures);
+    $("feature-auto-eat").addEventListener("change", updateFeatures);
     $("feature-wander").addEventListener("change", updateFeatures);
     $("vault-save").addEventListener("click", saveVaultEntry);
     $("vault-refresh").addEventListener("click", refreshVault);
