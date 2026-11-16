@@ -492,9 +492,78 @@ app.post("/api/bot/chat", requireCsrf, async (req,res) => {
     res.status(502).json({ error: "Could not send the message. Check that the bot is still connected." });
   }
 });
+function stopCombatLoop(runtime) {
+  if (runtime?.combatTimer) clearInterval(runtime.combatTimer);
+  if (runtime) {
+    runtime.combatTimer = null;
+    runtime.combatBusy = false;
+    for (const control of ["forward","back","left","right","sprint","jump"]) {
+      try { runtime.bot?.setControlState(control, false); } catch {}
+    }
+  }
+}
+function chooseCombatWeapon(bot, mode) {
+  const items = bot.inventory?.items?.() || [];
+  const rank = name => name.includes("netherite") ? 6 : name.includes("diamond") ? 5 :
+    name.includes("iron") ? 4 : name.includes("stone") ? 3 : name.includes("golden") ? 2 : 1;
+  const preferred = mode === "axe" ? ["axe","sword"] : mode === "sword" ? ["sword","axe"] : ["sword","axe"];
+  for (const kind of preferred) {
+    const candidates = items.filter(item => item.name.includes("_" + kind));
+    if (candidates.length) return candidates.sort((x,y) => rank(y.name)-rank(x.name))[0];
+  }
+  return null;
+}
+async function runCombatTick(runtime) {
+  const session = runtime?.trainingSession, bot = runtime?.bot;
+  if (!session || !bot?.entity || !["connected","authenticated"].includes(runtime.status)) return;
+  const player = Object.values(bot.players || {}).find(p =>
+    p?.username?.toLowerCase() === session.targetPlayer.toLowerCase());
+  if (!player?.entity) {
+    stopTrainingSession(runtime, "Approved opponent went out of range or left the server");
+    runtime.targetPlayer = null;
+    return;
+  }
+  if (runtime.combatBusy) return;
+  runtime.combatBusy = true;
+  try {
+    const target = player.entity;
+    const distance = bot.entity.position.distanceTo(target.position);
+    await bot.lookAt(target.position.offset(0, 1, 0), true);
+    const weapon = chooseCombatWeapon(bot, session.mode);
+    if (weapon && bot.heldItem?.type !== weapon.type) await bot.equip(weapon, "hand");
+    if (distance > 3.2) {
+      bot.setControlState("forward", true);
+      bot.setControlState("sprint", distance > 5);
+    } else {
+      bot.setControlState("forward", false);
+      bot.setControlState("sprint", false);
+      if (Date.now() - (runtime.lastCombatAttackAt || 0) >= 650) {
+        bot.attack(target);
+        runtime.lastCombatAttackAt = Date.now();
+      }
+    }
+  } finally {
+    runtime.combatBusy = false;
+  }
+}
+function startCombatLoop(runtime) {
+  if (!runtime?.trainingSession || runtime.combatTimer) return;
+  runtime.lastCombatAttackAt = 0;
+  runtime.combatTimer = setInterval(() => {
+    runCombatTick(runtime).catch(error => {
+      writeWorkspaceLog(runtime.workspaceId, "WARN", "Combat paused after a runtime error: " + String(error?.message || error).slice(0,180), "combat").catch(()=>{});
+      stopTrainingSession(runtime, "Combat runtime error");
+    });
+  }, 250);
+  runCombatTick(runtime).catch(error => {
+    writeWorkspaceLog(runtime.workspaceId, "WARN", "Combat could not start: " + String(error?.message || error).slice(0,180), "combat").catch(()=>{});
+    stopTrainingSession(runtime, "Combat start error");
+  });
+}
 function stopTrainingSession(runtime, reason = "Stopped from dashboard") {
   if (!runtime?.trainingSession) return false;
   const previous = runtime.trainingSession;
+  stopCombatLoop(runtime);
   runtime.trainingSession = null;
   if (runtime.wanderEnabled && runtime.bot && ["connected","authenticated"].includes(runtime.status)) startIdleWander(runtime);
   writeWorkspaceLog(runtime.workspaceId,"INFO","Training session stopped: "+reason+". Bot connection remains active.","training").catch(()=>{});
@@ -516,7 +585,8 @@ function trainingSnapshot(runtime) {
     botVersion:bot?.version || null,
     targetOnline:!!target?.entity,
     inventory: [...new Set(items)].sort(),
-    note:"Training session tracking only; no automated attacks are issued."
+    combatActive:!!runtime?.combatTimer,
+    note:"Local rule-based combat runs only against the selected opted-in opponent in the active training session."
   };
 }
 app.get("/api/training", (req,res) => {
@@ -540,7 +610,8 @@ app.post("/api/training/start", requireCsrf, async (req,res) => {
   }
   runtime.trainingSession={mode,targetPlayer:target.username,fightingStyle:cleanText(req.body?.fightingStyle,16)||"balanced",startedAt:new Date().toISOString()};
   stopIdleWander(runtime);
-  await writeWorkspaceLog(runtime.workspaceId,"INFO","Authorized training session started for "+target.username+" · "+mode.toUpperCase()+". No automated attacks are enabled.","training");
+  startCombatLoop(runtime);
+  await writeWorkspaceLog(runtime.workspaceId,"INFO","Local rule-based combat started against opted-in opponent "+target.username+" · "+mode.toUpperCase()+".","combat");
   res.json(trainingSnapshot(runtime));
 });
 app.get("/api/combat/plan", (req,res) => {
