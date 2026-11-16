@@ -321,6 +321,7 @@ async function refreshTraining() {
   try {
     const data=await api("/api/training");
     const active=!!data.active;
+    $("combat-analyze").disabled=!active;
     $("training-start").disabled=active||!data.targetPlayer||!data.targetOnline;
     $("training-stop").disabled=!active;
     $("training-status").textContent=active
@@ -557,7 +558,8 @@ async function init() {
     $("console-chat-form").addEventListener("submit", sendConsoleMessage);
     $("set-target").addEventListener("click", () => setOpponent(false));
     $("training-start").addEventListener("click",startTraining);
-    $("training-stop").addEventListener("click",stopTraining);\n    $("combat-analyze").addEventListener("click",analyzeCombat);
+    $("training-stop").addEventListener("click",stopTraining);
+    $("combat-analyze").addEventListener("click",analyzeCombat);
     $("inventory-refresh").addEventListener("click",refreshInventory);
     $("inventory-menu-close").addEventListener("click",()=>$("inventory-menu").hidden=true);
     document.querySelectorAll("[data-item-action]").forEach(button=>button.addEventListener("click",()=>runInventoryAction(button.dataset.itemAction)));
