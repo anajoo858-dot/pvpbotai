@@ -426,7 +426,7 @@ function stopIdleWander(runtime) {
   }
 }
 function startIdleWander(runtime) {
-  if (!runtime?.bot || !runtime.wanderEnabled || runtime.wanderTimer) return;
+  if (!runtime?.bot || !runtime.wanderEnabled || runtime.wanderTimer || runtime.trainingSession) return;
   runtime.wanderTimer = setInterval(() => {
     const bot = runtime.bot;
     if (!bot || !["connected","authenticated"].includes(runtime.status) || runtime.wanderMoveTimer) return;
