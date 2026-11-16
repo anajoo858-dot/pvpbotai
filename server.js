@@ -83,9 +83,6 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS combat_mode VARCHAR(20) NOT NULL DEFAULT 'smp'");
-  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS fighting_style VARCHAR(20) NOT NULL DEFAULT 'balanced'");
-  await pool.query("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS ai_mode VARCHAR(20) NOT NULL DEFAULT 'hybrid'");
   await pool.query("CREATE INDEX IF NOT EXISTS profiles_workspace_id_idx ON profiles(workspace_id)");
   await pool.query("CREATE TABLE IF NOT EXISTS bot_logs (id UUID PRIMARY KEY, workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, level VARCHAR(10) NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'system', message VARCHAR(2000) NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("CREATE INDEX IF NOT EXISTS bot_logs_workspace_created_idx ON bot_logs(workspace_id, created_at DESC)");
@@ -587,7 +584,7 @@ function startCombatLoop(runtime) {
       p?.username?.toLowerCase() === session.targetPlayer.toLowerCase());
     if (!player?.entity) {
       runtime.targetPlayer = null;
-      stopTrainingSession(runtime,"Approved opponent left or is no longer visible to the bot");
+      stopTrainingSession(runtime,"Selected player left or is no longer visible to the bot");
       return;
     }
     const entityId = player.entity.id;
