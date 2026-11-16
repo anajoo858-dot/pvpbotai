@@ -7,7 +7,6 @@ const { Pool } = require("pg");
 const helmet = require("helmet");
 const { rateLimit } = require("express-rate-limit");
 const activeBots = new Map();
-const { buildCombatPlan } = require("./combat-engine");
 
 const app = express();
 const logStreams = new Map();
@@ -643,7 +642,6 @@ function trainingSnapshot(runtime) {
     followTarget:runtime?.followSession?.targetPlayer||null,
     status:session ? "active" : "stopped",
     mode:session?.mode || null,
-    fightingStyle:session?.fightingStyle || null,
     targetPlayer:session?.targetPlayer || null,
     startedAt:session?.startedAt || null,
     botVersion:bot?.version || null,
@@ -676,28 +674,6 @@ app.post("/api/training/start", requireCsrf, async (req,res) => {
   startCombatLoop(runtime);
   await writeWorkspaceLog(runtime.workspaceId,"INFO","Local combat started against selected player "+target.username+".","combat");
   res.json(trainingSnapshot(runtime));
-});
-app.get("/api/combat/plan", (req,res) => {
-  const runtime=activeBots.get(req.session.workspaceId);
-  const session=runtime?.trainingSession;
-  if(!runtime?.bot?.entity || !["connected","authenticated"].includes(runtime.status)) {
-    return res.status(409).json({error:"Connect and spawn the bot first."});
-  }
-  if(!session || !runtime.targetPlayer || session.targetPlayer.toLowerCase()!==runtime.targetPlayer.toLowerCase()) {
-    return res.status(403).json({error:"Start Combat with a selected player first."});
-  }
-  const target=Object.values(runtime.bot.players||{}).find(p=>p?.username?.toLowerCase()===session.targetPlayer.toLowerCase());
-  if(!target?.entity) return res.status(409).json({error:"The approved opponent is no longer online."});
-  const plan=buildCombatPlan({
-    mode:session.mode,
-    fightingStyle:session.fightingStyle,
-    health:runtime.bot.health,
-    food:runtime.bot.food,
-    inventory:(runtime.bot.inventory?.items?.()||[]).map(item=>({name:item.name,count:item.count})),
-    equipment:(runtime.bot.inventory?.slots||[]).slice(5,9).filter(Boolean).map(item=>item.name)
-  });
-  res.set("Cache-Control","no-store");
-  res.json({targetPlayer:session.targetPlayer,plan,generatedAt:new Date().toISOString(),execution:"manual-practice-guidance"});
 });
 app.post("/api/training/stop", requireCsrf, async (req,res) => {
   const runtime=activeBots.get(req.session.workspaceId);
